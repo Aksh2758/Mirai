@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-multipart
+groq
+pydantic
+pydantic-settings
+PyMuPDF
+supabase
+python-dotenv
+requests
+httpx
+motor
+pymongo
+bson
