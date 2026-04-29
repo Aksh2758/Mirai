@@ -15,3 +15,7 @@ def get_mongo_db():
             raise ValueError("MONGODB_URI must be set in .env")
         _client = AsyncIOMotorClient(uri)
     return _client[os.getenv("MONGODB_DB_NAME", "nirmaan")]
+
+def get_projects_collection():
+    db = get_mongo_db()
+    return db["projects"]

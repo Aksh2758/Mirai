@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Project, RoadmapStep, CodeFile, CopilotMessage } from '@/lib/types'
+import type { Project, RoadmapStep, CodeFile, CopilotMessage, PsiResult, DeployStep, DeployResult } from '@/lib/types'
 
 interface StudioState {
   // Project data (from backend)
@@ -28,6 +28,23 @@ interface StudioState {
   setAdaptiveMessage: (msg: string | null) => void
   showCopilot: boolean
   setShowCopilot: (v: boolean) => void
+
+  // PSI modal
+  showPsiModal: boolean
+  setShowPsiModal: (v: boolean) => void
+  psiResult: PsiResult | null
+  setPsiResult: (result: PsiResult | null) => void
+  psiLoading: boolean
+  setPsiLoading: (v: boolean) => void
+
+  // Deploy modal
+  showDeployModal: boolean
+  setShowDeployModal: (v: boolean) => void
+  deploySteps: DeployStep[]
+  setDeploySteps: (steps: DeployStep[]) => void
+  updateDeployStep: (id: number, update: Partial<DeployStep>) => void
+  deployResult: DeployResult | null
+  setDeployResult: (result: DeployResult | null) => void
 }
 
 export const useStudioStore = create<StudioState>((set) => ({
@@ -80,4 +97,22 @@ export const useStudioStore = create<StudioState>((set) => ({
   setAdaptiveMessage: (msg) => set({ adaptiveMessage: msg }),
   showCopilot: false, // Default to false per plan
   setShowCopilot: (v) => set({ showCopilot: v }),
+
+  showPsiModal: false,
+  setShowPsiModal: (v) => set({ showPsiModal: v }),
+  psiResult: null,
+  setPsiResult: (result) => set({ psiResult: result }),
+  psiLoading: false,
+  setPsiLoading: (v) => set({ psiLoading: v }),
+
+  showDeployModal: false,
+  setShowDeployModal: (v) => set({ showDeployModal: v }),
+  deploySteps: [],
+  setDeploySteps: (steps) => set({ deploySteps: steps }),
+  updateDeployStep: (id, update) =>
+    set(state => ({
+      deploySteps: state.deploySteps.map(s => s.id === id ? { ...s, ...update } : s)
+    })),
+  deployResult: null,
+  setDeployResult: (result) => set({ deployResult: result }),
 }))

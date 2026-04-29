@@ -29,6 +29,19 @@ export async function GET(request: Request) {
     )
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
+      // Fetch profile to see if scanner is completed
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('scanner_completed')
+          .eq('id', user.id)
+          .single()
+
+        if (profile?.scanner_completed) {
+          return NextResponse.redirect(`${origin}/dashboard`)
+        }
+      }
       return NextResponse.redirect(`${origin}${next}`)
     }
   }

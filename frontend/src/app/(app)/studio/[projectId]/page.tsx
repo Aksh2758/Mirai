@@ -6,6 +6,9 @@ import { getProject, completeStep } from '@/lib/api'
 import { useStudioStore } from '@/store/studioStore'
 import AdaptiveRoadmap from '@/components/studio/AdaptiveRoadmap'
 import CopilotPane from '@/components/studio/CopilotPane'
+import PsiModal from '@/components/studio/PsiModal'
+import DeployModal from '@/components/studio/DeployModal'
+import InstructionPanel from '@/components/studio/InstructionPanel'
 
 // Monaco Editor must be loaded with ssr: false — it uses window APIs
 const CodeEditor = dynamic(() => import('@/components/studio/CodeEditor'), { ssr: false })
@@ -15,7 +18,12 @@ export default function StudioPage() {
   const router = useRouter()
   const projectId = params.projectId as string
 
-  const { project, setProject, adaptiveMessage, setAdaptiveMessage, showCopilot, setShowCopilot } = useStudioStore()
+  const { 
+    project, setProject, 
+    adaptiveMessage, setAdaptiveMessage, 
+    showCopilot, setShowCopilot,
+    setShowPsiModal, setShowDeployModal
+  } = useStudioStore()
   const [isCompleting, setIsCompleting] = useState(false)
 
   useEffect(() => {
@@ -76,6 +84,15 @@ export default function StudioPage() {
         
         <div style={{ height: 20, width: 1, background: 'rgba(255,255,255,0.1)' }} />
         
+        <button 
+          onClick={() => router.push('/internships')}
+          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
+        >
+          Internships
+        </button>
+
+        <div style={{ height: 20, width: 1, background: 'rgba(255,255,255,0.1)' }} />
+        
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>{project.title}</span>
           <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -84,21 +101,9 @@ export default function StudioPage() {
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-          <button
-            onClick={handleCompleteStep}
-            disabled={isCompleting || currentStep?.status !== 'active'}
-            style={{ 
-              background: '#1A6B3C', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 16px', 
-              fontSize: 11, fontWeight: 700, cursor: isCompleting ? 'not-allowed' : 'pointer',
-              opacity: (isCompleting || currentStep?.status !== 'active') ? 0.6 : 1,
-              transition: 'all 0.2s'
-            }}
-          >
-            {isCompleting ? 'Completing...' : '✓ Complete Step'}
-          </button>
           
           <button
-            onClick={() => alert('Project Structure Intelligence (PSI) analysis coming soon!')}
+            onClick={() => setShowPsiModal(true)}
             style={{ 
               background: 'rgba(255,87,51,0.15)', color: '#FF5733', border: 'none', 
               borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer' 
@@ -108,7 +113,7 @@ export default function StudioPage() {
           </button>
           
           <button
-            onClick={() => alert('Deployment pipeline initialization coming soon!')}
+            onClick={() => setShowDeployModal(true)}
             style={{ 
               background: '#4ADE80', color: '#0D0D0D', border: 'none', 
               borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer' 
@@ -137,12 +142,35 @@ export default function StudioPage() {
         gridTemplateColumns: showCopilot ? '260px 1fr 340px' : '260px 1fr', 
         overflow: 'hidden' 
       }}>
-        {/* PANE A — ROADMAP */}
-        <AdaptiveRoadmap
-          steps={project.steps}
-          currentStep={project.current_step}
-          adaptiveMessage={adaptiveMessage}
-        />
+        {/* PANE A — LEFT SIDEBAR: Step list + Instructions */}
+        <div style={{
+          background: '#161616',
+          borderRight: '1px solid rgba(255,255,255,0.06)',
+          display: 'grid',
+          gridTemplateRows: 'auto 1fr',   // Step list auto-height, instructions fills rest
+          overflow: 'hidden',
+        }}>
+          {/* Top: compact step list */}
+          <AdaptiveRoadmap
+            steps={project.steps}
+            currentStep={project.current_step}
+            adaptiveMessage={adaptiveMessage}
+          />
+
+          {/* Bottom: full instructions for active step */}
+          {project.steps[project.current_step] && (
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+              <InstructionPanel
+                step={project.steps[project.current_step]}
+                userLevel={project.difficulty}   // difficulty maps to user level for display
+                stepIndex={project.current_step}
+                totalSteps={project.steps.length}
+                onComplete={handleCompleteStep}
+                completing={isCompleting}
+              />
+            </div>
+          )}
+        </div>
 
         {/* PANE B — CODE EDITOR */}
         <div style={{ position: 'relative', overflow: 'hidden' }}>
@@ -158,6 +186,8 @@ export default function StudioPage() {
           />
         )}
       </div>
+      <PsiModal projectId={projectId} />
+      <DeployModal projectId={projectId} />
     </div>
   )
 }

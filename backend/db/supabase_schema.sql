@@ -58,3 +58,17 @@ RETURNS void AS $$
   SET xp_score = xp_score + amount, updated_at = NOW()
   WHERE id = user_id;
 $$ LANGUAGE sql SECURITY DEFINER;
+
+-- STEP 1: Add jobs_cache table
+CREATE TABLE IF NOT EXISTS public.jobs_cache (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  role        TEXT NOT NULL,
+  results     JSONB NOT NULL DEFAULT '[]',
+  fetched_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Only one cache row per role — upsert on role
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_cache_role_idx ON public.jobs_cache (role);
+
+-- Service role can read/write (no RLS needed — backend only accesses this)
+ALTER TABLE public.jobs_cache ENABLE ROW LEVEL SECURITY;

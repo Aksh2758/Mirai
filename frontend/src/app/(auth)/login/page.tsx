@@ -16,16 +16,17 @@ export default function LoginPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // Fetch their profile from Supabase
     const { data: profile } = await supabase
       .from('user_profiles')
-      .select('scanner_completed, active_project_id')
+      .select('scanner_completed')
       .eq('id', user.id)
       .single()
 
-    if (profile?.scanner_completed && profile?.active_project_id) {
-      router.push(`/studio/${profile.active_project_id}`)
+    if (profile?.scanner_completed) {
+      // Scanner done → always go to dashboard (dashboard shows active project)
+      router.push('/dashboard')
     } else {
+      // Scanner not done → go to scanner
       router.push('/scanner')
     }
   }
