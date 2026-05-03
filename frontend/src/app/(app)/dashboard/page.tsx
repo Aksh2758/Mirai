@@ -234,7 +234,7 @@ function SkillDnaCard({ user }: { user: DashboardSummary['user'] }) {
         {Object.entries(user.skill_scores).map(([key, val]) => (
           <div key={key}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', textTransform: 'capitalize' }}>{key}</span>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{val.label}</span>
               <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{val.score}%</span>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 3, height: 4 }}>

@@ -10,29 +10,47 @@ CACHE_TTL_HOURS = 6
 
 def _calculate_match_pct(job_description: str, skill_scores: dict) -> int:
     """
-    Simple match calculation:
-    Count how many of the user's top skills appear in the job description.
+    Match calculation against job description.
+    Handles both formats:
+      - Rich: {"label_1": {"label": "Python", "score": 75, "category": "Languages"}}
+      - Flat: {"backend": 85, "frontend": 42}
     Returns a percentage 0–100.
     """
     description_lower = job_description.lower()
 
-    # Map common skill score keys to related keywords
-    skill_keywords = {
-        "backend": ["backend", "api", "rest", "fastapi", "django", "flask", "node", "express", "python", "java", "go"],
-        "frontend": ["frontend", "react", "vue", "angular", "next.js", "css", "html", "javascript", "typescript"],
-        "ml": ["machine learning", "ml", "tensorflow", "pytorch", "scikit", "nlp", "deep learning", "model"],
-        "devops": ["devops", "docker", "kubernetes", "aws", "gcp", "azure", "ci/cd", "terraform", "linux"],
-        "mobile": ["android", "ios", "flutter", "react native", "swift", "kotlin", "mobile"],
-    }
-
     total_weight = 0
     matched_weight = 0
 
-    for skill, score in skill_scores.items():
-        keywords = skill_keywords.get(skill.lower(), [skill.lower()])
-        weight = score  # Use the skill score as the weight
+    for key, value in skill_scores.items():
+        # Detect format: rich object vs flat number
+        if isinstance(value, dict):
+            skill_name = value.get("label", key).lower()
+            weight = value.get("score", 50)
+        else:
+            skill_name = key.lower()
+            weight = value
+
+        # Check if the skill name (or common variants) appear in the description
+        variants = [skill_name]
+
+        # Add common aliases so "Python" also matches "python3", etc.
+        alias_map = {
+            "javascript": ["javascript", "js", "node.js", "nodejs"],
+            "typescript": ["typescript", "ts"],
+            "python": ["python", "python3", "py"],
+            "machine learning": ["machine learning", "ml", "sklearn", "scikit"],
+            "react": ["react", "reactjs", "react.js"],
+            "next.js": ["next.js", "nextjs", "next js"],
+            "postgresql": ["postgresql", "postgres", "psql"],
+            "mongodb": ["mongodb", "mongo"],
+            "docker": ["docker", "dockerfile", "containeriz"],
+            "kubernetes": ["kubernetes", "k8s"],
+            "fastapi": ["fastapi", "fast api"],
+        }
+        variants = alias_map.get(skill_name, [skill_name])
+
         total_weight += weight
-        if any(kw in description_lower for kw in keywords):
+        if any(v in description_lower for v in variants):
             matched_weight += weight
 
     if total_weight == 0:

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   id                  UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   github_username     TEXT,
   github_token        TEXT,
+  full_name           TEXT,
   scanner_method      TEXT CHECK (scanner_method IN ('github', 'pdf', 'manual', 'combined')),
   scanner_completed   BOOLEAN DEFAULT FALSE,
   role                TEXT,
@@ -37,10 +38,14 @@ CREATE POLICY "Users can update own profile"
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.user_profiles (id, github_username)
+  INSERT INTO public.user_profiles (id, github_username, full_name)
   VALUES (
     NEW.id,
-    NEW.raw_user_meta_data->>'user_name'
+    NEW.raw_user_meta_data->>'user_name',
+    COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_user_meta_data->>'name'
+    )
   )
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
