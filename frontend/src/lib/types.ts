@@ -4,6 +4,7 @@ export interface UserProfile {
   id: string
   github_username: string | null
   github_token: string | null
+  vercel_token: string | null
   scanner_method: 'github' | 'pdf' | 'manual' | 'combined' | null
   scanner_completed: boolean
   role: string | null
@@ -12,6 +13,9 @@ export interface UserProfile {
   pace_factor: 'slow' | 'normal' | 'fast' | null
   active_project_id: string | null
   xp_score: number
+  last_deployed_project: string | null
+  last_deployed_github_url: string | null
+  last_deployed_live_url: string | null
   created_at: string
   updated_at: string
 }
@@ -124,12 +128,22 @@ export interface Job {
   link: string
 }
 
+export interface CodeBlock {
+  filename: string    // exact file to apply to (e.g. "main.py", "App.jsx")
+  code: string        // the code content
+}
+
 export interface CopilotMessage {
   role: 'user' | 'assistant'
   content: string
-  code_block?: string                   // If AI returned a code block to apply
+  code_blocks?: CodeBlock[]   // All code blocks returned (multi-file support)
+  code_block?: string         // Legacy single code block (kept for compat)
   timestamp: string
+  step_id?: string            // Which step this was asked in
+  is_quick_action?: boolean   // Was this triggered by a quick action button
 }
+
+export type QuickAction = 'debug' | 'explain' | 'optimize' | 'next_hint'
 
 // ─── PSI Analysis ─────────────────────────────────────────────────────────────
 
@@ -165,9 +179,13 @@ export interface DeployStep {
 
 export interface DeployResult {
   success: boolean
-  live_url: string      // e.g. "https://rest-api-auth-a3f2.nirmaan.app"
+  live_url: string      // e.g. "https://rest-api-auth-a3f2.vercel.app"
   github_url: string    // e.g. "https://github.com/user/rest-api-auth"
   steps: DeployStep[]
+  demo_mode?: boolean   // true if no GitHub token was available
+  linkedin_post?: string
+  linkedin_headline?: string
+  linkedin_hashtags?: string[]
 }
 
 // ─── Jobs / Internships ───────────────────────────────────────────────────────

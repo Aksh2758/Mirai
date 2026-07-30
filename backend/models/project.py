@@ -33,6 +33,14 @@ class CodeFile(BaseModel):
     content: str
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+class ChatMessage(BaseModel):
+    """A single message in the copilot chat history."""
+    role: str                        # "user" | "assistant"
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    step_id: Optional[str] = None   # Which step this was asked in
+    has_code_block: bool = False     # True if assistant returned code
+
 class Project(BaseModel):
     user_id: str
     title: str
@@ -43,6 +51,7 @@ class Project(BaseModel):
     status: str = "active"
     steps: List[RoadmapStep]
     code_files: List[CodeFile] = []
+    chat_history: List[ChatMessage] = []   # ← Persistent copilot chat
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

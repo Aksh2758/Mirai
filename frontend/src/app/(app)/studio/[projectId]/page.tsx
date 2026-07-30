@@ -4,11 +4,10 @@ import { useParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { getProject, completeStep } from '@/lib/api'
 import { useStudioStore } from '@/store/studioStore'
-import AdaptiveRoadmap from '@/components/studio/AdaptiveRoadmap'
+import FileExplorer from '@/components/studio/FileExplorer'
 import CopilotPane from '@/components/studio/CopilotPane'
 import PsiModal from '@/components/studio/PsiModal'
 import DeployModal from '@/components/studio/DeployModal'
-import InstructionPanel from '@/components/studio/InstructionPanel'
 
 // Monaco Editor must be loaded with ssr: false — it uses window APIs
 const CodeEditor = dynamic(() => import('@/components/studio/CodeEditor'), { ssr: false })
@@ -22,7 +21,9 @@ export default function StudioPage() {
     project, setProject, 
     adaptiveMessage, setAdaptiveMessage, 
     showCopilot, setShowCopilot,
-    setShowPsiModal, setShowDeployModal
+    setShowPsiModal, setShowDeployModal,
+    psiResult,
+    activeFilename, codeFiles,
   } = useStudioStore()
   const [isCompleting, setIsCompleting] = useState(false)
 
@@ -68,7 +69,6 @@ export default function StudioPage() {
   }
 
   const currentStep = project.steps[project.current_step]
-  const { activeFilename, codeFiles } = useStudioStore.getState()
 
   return (
     <div style={{ height: '100vh', display: 'grid', gridTemplateRows: '52px 1fr', background: '#0D0D0D', overflow: 'hidden', color: '#fff', fontFamily: 'sans-serif' }}>
@@ -139,42 +139,27 @@ export default function StudioPage() {
       {/* 3-PANE LAYOUT */}
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: showCopilot ? '260px 1fr 340px' : '260px 1fr', 
+        gridTemplateColumns: showCopilot ? '230px 1fr 340px' : '230px 1fr', 
         overflow: 'hidden' 
       }}>
-        {/* PANE A — LEFT SIDEBAR: Step list + Instructions */}
+        {/* PANE A — LEFT SIDEBAR: VS Code-style file explorer */}
         <div style={{
           background: '#161616',
           borderRight: '1px solid rgba(255,255,255,0.06)',
-          display: 'grid',
-          gridTemplateRows: 'auto 1fr',   // Step list auto-height, instructions fills rest
           overflow: 'hidden',
         }}>
-          {/* Top: compact step list */}
-          <AdaptiveRoadmap
-            steps={project.steps}
-            currentStep={project.current_step}
-            adaptiveMessage={adaptiveMessage}
-          />
-
-          {/* Bottom: full instructions for active step */}
-          {project.steps[project.current_step] && (
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-              <InstructionPanel
-                step={project.steps[project.current_step]}
-                userLevel={project.difficulty}   // difficulty maps to user level for display
-                stepIndex={project.current_step}
-                totalSteps={project.steps.length}
-                onComplete={handleCompleteStep}
-                completing={isCompleting}
-              />
-            </div>
-          )}
+          <FileExplorer projectTitle={project.title} />
         </div>
 
-        {/* PANE B — CODE EDITOR */}
+        {/* PANE B — CODE EDITOR (Roadmap lives here as a pinned tab) */}
         <div style={{ position: 'relative', overflow: 'hidden' }}>
-          <CodeEditor projectId={projectId} />
+          <CodeEditor
+            projectId={projectId}
+            project={project}
+            adaptiveMessage={adaptiveMessage}
+            onCompleteStep={handleCompleteStep}
+            completingStep={isCompleting}
+          />
         </div>
 
         {/* PANE C — COPILOT */}
@@ -183,11 +168,13 @@ export default function StudioPage() {
             projectId={projectId}
             currentStep={currentStep}
             currentCode={codeFiles[activeFilename] ?? ''}
+            allFilenames={Object.keys(codeFiles)}
+            stepIndex={project.current_step}
           />
         )}
       </div>
       <PsiModal projectId={projectId} />
-      <DeployModal projectId={projectId} />
+      <DeployModal projectId={projectId} psiScore={psiResult?.score} />
     </div>
   )
 }

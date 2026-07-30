@@ -107,11 +107,44 @@ export async function saveCode(projectId: string, filename: string, content: str
   })
 }
 
+export async function createFile(projectId: string, filename: string, content: string = ''): Promise<{ ok: boolean; filename: string }> {
+  return request<{ ok: boolean; filename: string }>('/studio/create-file', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, filename, content }),
+  })
+}
+
+export async function deleteFile(projectId: string, filename: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/studio/delete-file', {
+    method: 'DELETE',
+    body: JSON.stringify({ project_id: projectId, filename }),
+  })
+}
+
+export async function renameFile(projectId: string, oldFilename: string, newFilename: string): Promise<{ ok: boolean; new_filename: string }> {
+  return request<{ ok: boolean; new_filename: string }>('/studio/rename-file', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, old_filename: oldFilename, new_filename: newFilename }),
+  })
+}
+
 export async function completeStep(projectId: string, stepId: string): Promise<{ next_step: any; adaptive_message: string; xp_gained: number }> {
   return request<{ next_step: any; adaptive_message: string; xp_gained: number }>('/studio/complete-step', {
     method: 'POST',
     body: JSON.stringify({ project_id: projectId, step_id: stepId }),
   })
+}
+
+export async function fetchChatHistory(
+  projectId: string,
+  stepId?: string,
+  limit: number = 50,
+): Promise<{ messages: any[]; total: number }> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (stepId) params.set('step_id', stepId)
+  return request<{ messages: any[]; total: number }>(
+    `/studio/${projectId}/chat-history?${params.toString()}`
+  )
 }
 
 export async function fetchJobs(): Promise<JobsResponse> {
@@ -134,8 +167,9 @@ export async function runPSIAnalysis(projectId: string): Promise<PsiResult> {
  * Deploy returns a streaming SSE response.
  * Handle this with fetch + ReadableStream in the component, not this function.
  * This function just returns the raw Response so the component can stream it.
+ * psiScore is optional — pass it if PSI was run so the LinkedIn post can mention it.
  */
-export async function deployProject(projectId: string): Promise<Response> {
+export async function deployProject(projectId: string, psiScore?: number): Promise<Response> {
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -148,7 +182,7 @@ export async function deployProject(projectId: string): Promise<Response> {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${session?.access_token ?? ''}`,
     },
-    body: JSON.stringify({ project_id: projectId }),
+    body: JSON.stringify({ project_id: projectId, psi_score: psiScore ?? null }),
   })
   
   if (!res.ok) {
@@ -157,6 +191,21 @@ export async function deployProject(projectId: string): Promise<Response> {
   }
   
   return res
+}
+
+// ─── Auth / Token Management ──────────────────────────────────────────────────
+
+export async function saveVercelToken(token: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/auth/save-vercel-token', {
+    method: 'POST',
+    body: JSON.stringify({ vercel_token: token }),
+  })
+}
+
+export async function removeVercelToken(): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/auth/vercel-token', {
+    method: 'DELETE',
+  })
 }
 
 // ─── Legacy / Admin ──────────────────────────────────────────────────────────

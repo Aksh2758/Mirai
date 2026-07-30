@@ -23,7 +23,7 @@ interface CachedJobs {
 /**
  * Fetch jobs based on user's skill DNA
  * Caches results in localStorage with 24h TTL
- * Gracefully returns empty array if endpoint 404s (backend not yet implemented)
+ * fetchJobs() takes no params — backend reads the user's role from their profile
  */
 export function useJobs(): UseJobsReturn {
   const { skillDNA } = useUser();
@@ -54,9 +54,8 @@ export function useJobs(): UseJobsReturn {
           }
         }
 
-        // Fetch from backend
-        const skills = skillDNA.top_languages || [];
-        const response = await fetchJobs(skills);
+        // Fetch from backend — no params needed, backend uses user JWT
+        const response = await fetchJobs();
 
         // Ensure response.jobs is an array, cast to Job[]
         const jobsList: Job[] = (Array.isArray(response.jobs) ? response.jobs : []) as unknown as Job[];
@@ -70,9 +69,7 @@ export function useJobs(): UseJobsReturn {
 
         setJobs(jobsList);
       } catch (err) {
-        // Gracefully handle 404 or other errors (endpoint may not exist yet)
         if (err instanceof Error && err.message.includes("404")) {
-          // Endpoint doesn't exist—return empty array
           setJobs([]);
           setError(null);
         } else {
@@ -91,8 +88,11 @@ export function useJobs(): UseJobsReturn {
   const matchPercentage = (job: Job): number => {
     if (!skillDNA || !job.skills) return 0;
 
-    const matchedSkills = job.skills.filter((skill) =>
-      skillDNA.top_languages.some((lang) =>
+    const topLangs = Object.keys(skillDNA.skill_scores || {});
+    if (topLangs.length === 0) return 0;
+
+    const matchedSkills = job.skills.filter((skill: string) =>
+      topLangs.some((lang: string) =>
         lang.toLowerCase().includes(skill.toLowerCase()) ||
         skill.toLowerCase().includes(lang.toLowerCase())
       )

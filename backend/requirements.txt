@@ -11,4 +11,4 @@ requests
 httpx
 motor
 pymongo
-bson
+# NOTE: Do NOT add 'bson' as a separate package — it comes with pymongo

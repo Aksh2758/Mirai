@@ -1,5 +1,11 @@
 import { create } from 'zustand'
-import type { Project, RoadmapStep, CodeFile, CopilotMessage, PsiResult, DeployStep, DeployResult } from '@/lib/types'
+import type { Project, CopilotMessage, CodeBlock, PsiResult, DeployStep, DeployResult } from '@/lib/types'
+
+// Virtual "pinned" tab id for the Roadmap/Instructions view that lives inside
+// the editor's tab strip (like a Welcome tab in VS Code). It is not a real
+// file — CodeEditor special-cases this id and renders <RoadmapTab /> instead
+// of the Monaco editor. It can never be closed by the user.
+export const ROADMAP_TAB_ID = '__roadmap__'
 
 interface StudioState {
   // Project data (from backend)
@@ -14,12 +20,22 @@ interface StudioState {
   // Key: filename, Value: current content
   codeFiles: Record<string, string>
   setFileContent: (filename: string, content: string) => void
+  addFile: (filename: string, content?: string) => void
+  removeFile: (filename: string) => void
+  renameFileInStore: (oldFilename: string, newFilename: string) => void
+
+  // Unsaved tracking — filenames that have changes not yet persisted
+  unsavedFiles: Set<string>
+  markUnsaved: (filename: string) => void
+  markSaved: (filename: string) => void
 
   // Copilot messages
   messages: CopilotMessage[]
   addMessage: (msg: CopilotMessage) => void
-  appendToLastMessage: (content: string) => void    // For streaming
-  setLastMessageCodeBlock: (code: string) => void   // For Apply Fix
+  appendToLastMessage: (content: string) => void          // For streaming
+  setLastMessageCodeBlock: (code: string) => void         // Legacy single Apply Fix
+  setLastMessageCodeBlocks: (blocks: CodeBlock[]) => void // Multi-file Apply Fix
+  clearMessages: () => void                               // Clear chat history
 
   // UI state
   isStreaming: boolean
@@ -60,16 +76,60 @@ export const useStudioStore = create<StudioState>((set) => ({
       const step0 = project.steps[0]
       codeFiles[step0.starter_filename] = step0.starter_code
     }
-    const activeFilename = Object.keys(codeFiles)[0] ?? 'main.py'
-    set({ project, codeFiles, activeFilename })
+    set({ project, codeFiles, activeFilename: ROADMAP_TAB_ID })
   },
 
-  activeFilename: 'main.py',
+  activeFilename: ROADMAP_TAB_ID,
   setActiveFilename: (filename) => set({ activeFilename: filename }),
 
   codeFiles: {},
   setFileContent: (filename, content) =>
     set(state => ({ codeFiles: { ...state.codeFiles, [filename]: content } })),
+  addFile: (filename, content = '') =>
+    set(state => ({
+      codeFiles: { ...state.codeFiles, [filename]: content },
+      activeFilename: filename,
+    })),
+  removeFile: (filename) =>
+    set(state => {
+      const { [filename]: _, ...rest } = state.codeFiles
+      const remaining = Object.keys(rest)
+      const newActive = filename === state.activeFilename
+        ? (remaining[remaining.length - 1] ?? ROADMAP_TAB_ID)
+        : state.activeFilename
+      const unsaved = new Set(state.unsavedFiles)
+      unsaved.delete(filename)
+      return { codeFiles: rest, activeFilename: newActive, unsavedFiles: unsaved }
+    }),
+  renameFileInStore: (oldFilename, newFilename) =>
+    set(state => {
+      const content = state.codeFiles[oldFilename] ?? ''
+      const { [oldFilename]: _, ...rest } = state.codeFiles
+      const unsaved = new Set(state.unsavedFiles)
+      if (unsaved.has(oldFilename)) {
+        unsaved.delete(oldFilename)
+        unsaved.add(newFilename)
+      }
+      return {
+        codeFiles: { ...rest, [newFilename]: content },
+        activeFilename: state.activeFilename === oldFilename ? newFilename : state.activeFilename,
+        unsavedFiles: unsaved,
+      }
+    }),
+
+  unsavedFiles: new Set<string>(),
+  markUnsaved: (filename) =>
+    set(state => {
+      const s = new Set(state.unsavedFiles)
+      s.add(filename)
+      return { unsavedFiles: s }
+    }),
+  markSaved: (filename) =>
+    set(state => {
+      const s = new Set(state.unsavedFiles)
+      s.delete(filename)
+      return { unsavedFiles: s }
+    }),
 
   messages: [],
   addMessage: (msg) => set(state => ({ messages: [...state.messages, msg] })),
@@ -90,6 +150,15 @@ export const useStudioStore = create<StudioState>((set) => ({
       messages[messages.length - 1] = last
       return { messages }
     }),
+  setLastMessageCodeBlocks: (blocks) =>
+    set(state => {
+      const messages = [...state.messages]
+      if (messages.length === 0) return state
+      const last = { ...messages[messages.length - 1], code_blocks: blocks }
+      messages[messages.length - 1] = last
+      return { messages }
+    }),
+  clearMessages: () => set({ messages: [] }),
 
   isStreaming: false,
   setIsStreaming: (v) => set({ isStreaming: v }),

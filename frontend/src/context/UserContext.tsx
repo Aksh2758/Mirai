@@ -1,18 +1,18 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode } from "react";
-import { User, SkillDNA } from "@/lib/types";
+import { User, SkillDna } from "@/lib/types";
 
 interface UserContextType {
   // State
   user: User | null;
-  skillDNA: SkillDNA | null;
+  skillDNA: SkillDna | null;
   currentProject: string | null;
   xpScore: number;
 
   // Actions
   setUser: (user: User) => void;
-  setSkillDNA: (skillDNA: SkillDNA) => void;
+  setSkillDNA: (skillDNA: SkillDna) => void;
   setCurrentProject: (project: string) => void;
   setXpScore: (score: number) => void;
   incrementXpScore: (amount: number) => void;
@@ -23,7 +23,7 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [skillDNA, setSkillDNA] = useState<SkillDNA | null>(null);
+  const [skillDNA, setSkillDNA] = useState<SkillDna | null>(null);
   const [currentProject, setCurrentProject] = useState<string | null>(null);
   const [xpScore, setXpScore] = useState(0);
 

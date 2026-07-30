@@ -1,8 +1,8 @@
 'use client'
-import type { SkillDNA } from '@/lib/types'
+import type { SkillDna } from '@/lib/types'
 
 interface Props {
-  dna: SkillDNA
+  dna: SkillDna
 }
 
 export default function SkillDNACard({ dna }: Props) {
@@ -28,25 +28,34 @@ export default function SkillDNACard({ dna }: Props) {
       </p>
 
       <div style={{ display: 'grid', gap: 14 }}>
-        {Object.entries(skill_scores).map(([skill, score]) => (
-          <div key={skill}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{skill}</span>
-              <span style={{ fontSize: 11, color: '#6B6B6B' }}>{score}%</span>
+        {Object.entries(skill_scores).map(([skill, scoreVal]) => {
+          // skill_scores can be { label, score, category } objects OR plain numbers
+          const score: number = typeof scoreVal === 'object' && scoreVal !== null
+            ? (scoreVal as { score: number }).score
+            : Number(scoreVal)
+          const label: string = typeof scoreVal === 'object' && scoreVal !== null
+            ? (scoreVal as { label: string }).label || skill
+            : skill
+          return (
+            <div key={skill}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>{label}</span>
+                <span style={{ fontSize: 11, color: '#6B6B6B' }}>{score}%</span>
+              </div>
+              <div style={{ height: 6, background: '#F0EDE8', borderRadius: 10, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${score}%`,
+                    background: score > 70 ? '#1A6B3C' : score > 40 ? '#2E7D32' : '#616161',
+                    borderRadius: 10,
+                    transition: 'width 1s ease-out'
+                  }}
+                />
+              </div>
             </div>
-            <div style={{ height: 6, background: '#F0EDE8', borderRadius: 10, overflow: 'hidden' }}>
-              <div 
-                style={{ 
-                  height: '100%', 
-                  width: `${score}%`, 
-                  background: score > 70 ? '#1A6B3C' : score > 40 ? '#2E7D32' : '#616161',
-                  borderRadius: 10,
-                  transition: 'width 1s ease-out'
-                }} 
-              />
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

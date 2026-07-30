@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   id                  UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   github_username     TEXT,
   github_token        TEXT,
+  vercel_token        TEXT,
   full_name           TEXT,
   scanner_method      TEXT CHECK (scanner_method IN ('github', 'pdf', 'manual', 'combined')),
   scanner_completed   BOOLEAN DEFAULT FALSE,
@@ -14,6 +15,10 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   pace_factor         TEXT CHECK (pace_factor IN ('slow', 'normal', 'fast')),
   active_project_id   TEXT,
   xp_score            INTEGER DEFAULT 0,
+  -- Deploy tracking columns
+  last_deployed_project     TEXT,
+  last_deployed_github_url  TEXT,
+  last_deployed_live_url    TEXT,
   created_at          TIMESTAMPTZ DEFAULT NOW(),
   updated_at          TIMESTAMPTZ DEFAULT NOW()
 );
@@ -77,3 +82,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS jobs_cache_role_idx ON public.jobs_cache (role
 
 -- Service role can read/write (no RLS needed — backend only accesses this)
 ALTER TABLE public.jobs_cache ENABLE ROW LEVEL SECURITY;
+
+-- ─── MIGRATION: Add new columns if upgrading from older schema ────────────────
+-- Run these if your table already exists (idempotent — safe to run multiple times)
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS vercel_token TEXT;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS last_deployed_project TEXT;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS last_deployed_github_url TEXT;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS last_deployed_live_url TEXT;
+ALTER TABLE public.user_profiles ADD COLUMN IF NOT EXISTS full_name TEXT;
+
