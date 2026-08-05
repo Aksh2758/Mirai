@@ -8,7 +8,9 @@ import type {
   Project,
   PsiResult,
   JobsResponse,
-  DashboardSummary
+  DashboardSummary,
+  RoadmapStep,
+  CopilotMessage
 } from './types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -128,8 +130,8 @@ export async function renameFile(projectId: string, oldFilename: string, newFile
   })
 }
 
-export async function completeStep(projectId: string, stepId: string): Promise<{ next_step: any; adaptive_message: string; xp_gained: number }> {
-  return request<{ next_step: any; adaptive_message: string; xp_gained: number }>('/studio/complete-step', {
+export async function completeStep(projectId: string, stepId: string): Promise<{ next_step: RoadmapStep | null; adaptive_message: string; xp_gained: number }> {
+  return request<{ next_step: RoadmapStep | null; adaptive_message: string; xp_gained: number }>('/studio/complete-step', {
     method: 'POST',
     body: JSON.stringify({ project_id: projectId, step_id: stepId }),
   })
@@ -139,12 +141,19 @@ export async function fetchChatHistory(
   projectId: string,
   stepId?: string,
   limit: number = 50,
-): Promise<{ messages: any[]; total: number }> {
+): Promise<{ messages: CopilotMessage[]; total: number }> {
   const params = new URLSearchParams({ limit: String(limit) })
   if (stepId) params.set('step_id', stepId)
-  return request<{ messages: any[]; total: number }>(
+  return request<{ messages: CopilotMessage[]; total: number }>(
     `/studio/${projectId}/chat-history?${params.toString()}`
   )
+}
+
+export async function syncStudioWorkspace(projectId: string): Promise<{ ok: boolean; synced: boolean; file_count: number; reason?: string }> {
+  return request<{ ok: boolean; synced: boolean; file_count: number; reason?: string }>('/studio/sync-workspace', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId }),
+  })
 }
 
 export async function fetchJobs(): Promise<JobsResponse> {

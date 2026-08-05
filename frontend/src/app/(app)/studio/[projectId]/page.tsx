@@ -9,11 +9,11 @@ import {
   ChevronRight,
   Code2,
   ExternalLink,
-  PanelRightClose,
   Play,
   RefreshCw,
   Rocket,
   Save,
+  Settings,
   Sparkles,
   Terminal,
 } from 'lucide-react'
@@ -55,9 +55,9 @@ function StepStatus({ step, active }: { step: RoadmapStep; active: boolean }) {
         gap: 10,
         padding: '9px 10px',
         borderRadius: 8,
-        background: active ? 'rgba(0,122,204,0.22)' : 'transparent',
-        border: active ? '1px solid rgba(0,122,204,0.42)' : '1px solid transparent',
-        opacity: locked ? 0.46 : 1,
+        background: active ? '#04395e' : 'transparent',
+        border: active ? '1px solid #0e639c' : '1px solid transparent',
+        opacity: locked ? 0.42 : 1,
       }}
     >
       <div
@@ -80,7 +80,7 @@ function StepStatus({ step, active }: { step: RoadmapStep; active: boolean }) {
           style={{
             color: active ? '#fff' : '#c9d1d9',
             fontSize: 12,
-            fontWeight: active ? 700 : 500,
+            fontWeight: active ? 750 : 500,
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -88,7 +88,7 @@ function StepStatus({ step, active }: { step: RoadmapStep; active: boolean }) {
         >
           {step.title}
         </div>
-        <div style={{ color: '#6e7681', fontSize: 10, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+        <div style={{ color: '#7d8590', fontSize: 10, marginTop: 3, textTransform: 'uppercase', letterSpacing: 0.4 }}>
           {done ? 'Completed' : locked ? 'Locked' : active ? 'In progress' : 'Ready'}
         </div>
       </div>
@@ -108,40 +108,42 @@ function RoadmapSidebar({ project, currentStep, onComplete, completing }: {
   return (
     <aside
       style={{
-        background: '#181818',
+        height: '100%',
+        background: '#141414',
         borderRight: '1px solid #2b2b2b',
         display: 'flex',
         flexDirection: 'column',
         minWidth: 0,
+        overflow: 'hidden',
       }}
     >
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid #2b2b2b' }}>
-        <div style={{ color: '#969696', fontSize: 10, fontWeight: 700, letterSpacing: 1.4, textTransform: 'uppercase' }}>
-          Nirmaan Roadmap
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid #2b2b2b', flexShrink: 0 }}>
+        <div style={{ color: '#969696', fontSize: 10, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase' }}>
+          Project Roadmap
         </div>
-        <div style={{ color: '#e6edf3', fontSize: 14, fontWeight: 800, marginTop: 8, lineHeight: 1.35 }}>
+        <div style={{ color: '#e6edf3', fontSize: 14, fontWeight: 850, marginTop: 8, lineHeight: 1.35 }}>
           {project.title}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
           <div style={{ flex: 1, height: 5, borderRadius: 999, background: '#2d2d2d', overflow: 'hidden' }}>
             <div style={{ width: `${progress}%`, height: '100%', background: '#007acc' }} />
           </div>
-          <span style={{ color: '#969696', fontSize: 10, fontWeight: 700 }}>{progress}%</span>
+          <span style={{ color: '#969696', fontSize: 10, fontWeight: 800 }}>{progress}%</span>
         </div>
       </div>
 
-      <div style={{ padding: 10, overflowY: 'auto', flex: 1 }}>
+      <div style={{ padding: 10, overflowY: 'auto', flex: 1, minHeight: 0 }}>
         {project.steps.map((step, index) => (
           <StepStatus key={step.id} step={step} active={index === project.current_step} />
         ))}
       </div>
 
-      <div style={{ borderTop: '1px solid #2b2b2b', padding: 14, background: '#1f1f1f' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#c9d1d9', fontSize: 12, fontWeight: 800 }}>
+      <div style={{ borderTop: '1px solid #2b2b2b', padding: 14, background: '#1f1f1f', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#c9d1d9', fontSize: 12, fontWeight: 850 }}>
           <BookOpen size={15} color="#58a6ff" />
           Step focus
         </div>
-        <div style={{ color: '#8b949e', fontSize: 11.5, lineHeight: 1.6, marginTop: 9, maxHeight: 130, overflowY: 'auto' }}>
+        <div style={{ color: '#8b949e', fontSize: 11.5, lineHeight: 1.6, marginTop: 9, maxHeight: 118, overflowY: 'auto' }}>
           {currentStep?.instructions || 'Load the project to see current mentor instructions.'}
         </div>
         <button
@@ -156,7 +158,7 @@ function RoadmapSidebar({ project, currentStep, onComplete, completing }: {
             background: completing ? '#30363d' : '#007acc',
             color: '#fff',
             fontSize: 12,
-            fontWeight: 800,
+            fontWeight: 850,
             cursor: completing || !currentStep ? 'not-allowed' : 'pointer',
           }}
         >
@@ -167,81 +169,35 @@ function RoadmapSidebar({ project, currentStep, onComplete, completing }: {
   )
 }
 
-function ActivityBar({ activeMode, setActiveMode }: { activeMode: StudioMode; setActiveMode: (mode: StudioMode) => void }) {
-  return (
-    <nav
-      style={{
-        background: '#333333',
-        borderRight: '1px solid #252526',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        paddingTop: 10,
-        gap: 8,
-      }}
-    >
-      <button
-        onClick={() => setActiveMode('server')}
-        title="VS Code workspace"
-        style={{
-          width: 42,
-          height: 42,
-          border: 'none',
-          borderLeft: activeMode === 'server' ? '2px solid #fff' : '2px solid transparent',
-          background: 'transparent',
-          color: activeMode === 'server' ? '#fff' : '#c5c5c5',
-          cursor: 'pointer',
-        }}
-      >
-        <Code2 size={23} />
-      </button>
-      <button
-        onClick={() => setActiveMode('setup')}
-        title="Code-server setup"
-        style={{
-          width: 42,
-          height: 42,
-          border: 'none',
-          borderLeft: activeMode === 'setup' ? '2px solid #fff' : '2px solid transparent',
-          background: 'transparent',
-          color: activeMode === 'setup' ? '#fff' : '#c5c5c5',
-          cursor: 'pointer',
-        }}
-      >
-        <Terminal size={22} />
-      </button>
-      <div style={{ flex: 1 }} />
-      <Sparkles size={20} color="#c5c5c5" style={{ marginBottom: 14 }} />
-    </nav>
-  )
-}
-
 function CodeServerPanel({ iframeSrc, mode, onRetry }: { iframeSrc: string | null; mode: StudioMode; onRetry: () => void }) {
   if (mode === 'setup' || !iframeSrc) {
     return (
       <div style={{ height: '100%', display: 'grid', placeItems: 'center', background: '#1e1e1e', color: '#d4d4d4', padding: 28 }}>
-        <div style={{ width: 'min(760px, 100%)', border: '1px solid #3c3c3c', borderRadius: 12, background: '#252526', overflow: 'hidden' }}>
+        <div style={{ width: 'min(760px, 100%)', border: '1px solid #3c3c3c', borderRadius: 12, background: '#252526', overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid #3c3c3c', display: 'flex', alignItems: 'center', gap: 10 }}>
             <Code2 size={18} color="#58a6ff" />
             <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>Connect an open VS Code server</div>
-              <div style={{ fontSize: 11, color: '#969696', marginTop: 2 }}>Nirmaan Studio now embeds real browser VS Code instead of Monaco.</div>
+              <div style={{ fontSize: 14, fontWeight: 850, color: '#fff' }}>Connect an open VS Code server</div>
+              <div style={{ fontSize: 11, color: '#969696', marginTop: 2 }}>Nirmaan embeds the real VS Code Web UI inside the Studio workspace.</div>
             </div>
           </div>
           <div style={{ padding: 20, display: 'grid', gap: 16 }}>
             <div style={{ color: '#c9d1d9', fontSize: 13, lineHeight: 1.6 }}>
-              Start code-server for the generated project workspace, then expose the URL to the frontend with the env vars below. Restart Next.js after editing the env file.
+              Start code-server for the generated project workspace, then expose that URL to the frontend. Restart Next.js after editing the env file.
             </div>
             <pre style={{ margin: 0, padding: 16, borderRadius: 8, background: '#111111', border: '1px solid #3c3c3c', color: '#9cdcfe', fontSize: 12, lineHeight: 1.7, overflowX: 'auto' }}>{`# frontend/.env.local
 NEXT_PUBLIC_CODE_SERVER_URL=http://localhost:8080
 NEXT_PUBLIC_CODE_SERVER_FOLDER=/workspace/nirmaan-project
 
+# optional backend sync for PSI/deploy from VS Code files
+CODE_SERVER_WORKSPACE_ROOT=/workspace/nirmaan-project
+
 # example local launch
 code-server --bind-addr 0.0.0.0:8080 --auth none /workspace/nirmaan-project`}</pre>
             <div style={{ display: 'grid', gap: 8, color: '#969696', fontSize: 12, lineHeight: 1.55 }}>
-              <div>1. The iframe uses the exact code-server UI: Explorer, editor tabs, extensions, integrated terminal, command palette, and source control.</div>
-              <div>2. If your deployment blocks iframes, the “Open VS Code” button still launches the same workspace in a new tab.</div>
-              <div>3. Keep Nirmaan Mentor open on the right for roadmap-aware guidance while coding inside VS Code.</div>
+              <div>1. VS Code provides the Explorer, tabs, terminal, source control, command palette, and extensions.</div>
+              <div>2. Nirmaan keeps the roadmap and mentor outside the iframe so they stay visible and do not disturb VS Code.</div>
+              <div>3. The top navbar and bottom Nirmaan status bar are fixed outside VS Code and will not move with the iframe.</div>
             </div>
           </div>
         </div>
@@ -250,7 +206,7 @@ code-server --bind-addr 0.0.0.0:8080 --auth none /workspace/nirmaan-project`}</p
   }
 
   return (
-    <div style={{ height: '100%', background: '#1e1e1e', position: 'relative' }}>
+    <div style={{ height: '100%', background: '#1e1e1e', position: 'relative', overflow: 'hidden' }}>
       <iframe
         key={iframeSrc}
         src={iframeSrc}
@@ -264,16 +220,17 @@ code-server --bind-addr 0.0.0.0:8080 --auth none /workspace/nirmaan-project`}</p
         style={{
           position: 'absolute',
           right: 14,
-          bottom: 30,
+          bottom: 14,
           width: 34,
           height: 34,
           borderRadius: 8,
           border: '1px solid rgba(255,255,255,0.12)',
-          background: 'rgba(37,37,38,0.9)',
+          background: 'rgba(37,37,38,0.92)',
           color: '#d4d4d4',
           display: 'grid',
           placeItems: 'center',
           cursor: 'pointer',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
         }}
       >
         <RefreshCw size={15} />
@@ -360,41 +317,52 @@ export default function StudioPage() {
     <div
       style={{
         height: '100vh',
-        display: 'grid',
-        gridTemplateRows: '34px 1fr 22px',
+        position: 'relative',
         background: '#1e1e1e',
         color: '#d4d4d4',
         overflow: 'hidden',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        paddingTop: 48,
+        paddingBottom: 24,
+        boxSizing: 'border-box',
       }}
     >
       <header
         style={{
-          background: '#3c3c3c',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 48,
+          background: '#111111',
           borderBottom: '1px solid #2b2b2b',
           display: 'grid',
-          gridTemplateColumns: 'auto 1fr auto',
+          gridTemplateColumns: 'minmax(220px, auto) 1fr auto',
           alignItems: 'center',
           gap: 12,
-          padding: '0 10px',
+          padding: '0 12px',
+          zIndex: 20,
+          boxSizing: 'border-box',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => router.push('/dashboard')}
-            title="Back to dashboard"
-            style={{ width: 26, height: 26, border: 'none', background: 'transparent', color: '#d4d4d4', display: 'grid', placeItems: 'center', cursor: 'pointer' }}
-          >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <button onClick={() => router.push('/dashboard')} title="Back to dashboard" style={iconButtonStyle}>
             <ArrowLeft size={16} />
           </button>
-          <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>Nirmaan Studio</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ color: '#fff', fontSize: 13, fontWeight: 850, whiteSpace: 'nowrap' }}>Nirmaan Studio</div>
+            <div style={{ color: '#8b949e', fontSize: 10, whiteSpace: 'nowrap' }}>VS Code workspace</div>
+          </div>
         </div>
 
         <div style={{ textAlign: 'center', color: '#d4d4d4', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {project.title} — Visual Studio Code Server
+          {project.title}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <button onClick={() => setActiveMode('setup')} style={topButtonStyle(false)} title="Code-server setup">
+            <Settings size={13} /> Setup
+          </button>
           <button
             onClick={() => window.open(iframeSrc || CODE_SERVER_URL || undefined, '_blank')}
             disabled={!iframeSrc && !CODE_SERVER_URL}
@@ -413,23 +381,24 @@ export default function StudioPage() {
             <Rocket size={13} /> Deploy
           </button>
           <button onClick={() => setShowCopilot(!showCopilot)} style={topButtonStyle(false)} title="Toggle mentor">
-            <PanelRightClose size={13} /> Mentor
+            <Sparkles size={13} /> Mentor
           </button>
         </div>
       </header>
 
       <main
         style={{
+          height: '100%',
           display: 'grid',
-          gridTemplateColumns: `48px 286px 1fr ${mentorWidth}px`,
+          gridTemplateColumns: `288px minmax(0, 1fr) ${mentorWidth}px`,
           minHeight: 0,
           transition: 'grid-template-columns 180ms ease',
+          overflow: 'hidden',
         }}
       >
-        <ActivityBar activeMode={activeMode} setActiveMode={setActiveMode} />
         <RoadmapSidebar project={project} currentStep={currentStep} onComplete={handleCompleteStep} completing={isCompleting} />
 
-        <section style={{ display: 'grid', gridTemplateRows: '35px 1fr', minWidth: 0, minHeight: 0 }}>
+        <section style={{ display: 'grid', gridTemplateRows: '32px minmax(0, 1fr)', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
           <div
             style={{
               background: '#252526',
@@ -440,17 +409,19 @@ export default function StudioPage() {
               padding: '0 10px',
               color: '#969696',
               fontSize: 12,
+              minWidth: 0,
+              overflow: 'hidden',
             }}
           >
-            <span style={{ color: '#d4d4d4', fontWeight: 700 }}>Workspace</span>
+            <span style={{ color: '#d4d4d4', fontWeight: 750, whiteSpace: 'nowrap' }}>Workspace</span>
             <span style={{ color: '#5a5a5a' }}>/</span>
-            <span>{CODE_SERVER_FOLDER || 'code-server'}</span>
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Save size={12} /> autosave inside VS Code</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{CODE_SERVER_FOLDER || 'code-server'}</span>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Save size={12} /> VS Code autosave</span>
               <span style={{ color: '#5a5a5a' }}>|</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Terminal size={12} /> integrated terminal</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Terminal size={12} /> terminal</span>
               <span style={{ color: '#5a5a5a' }}>|</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Play size={12} /> run from terminal</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Play size={12} /> run</span>
             </div>
           </div>
 
@@ -470,6 +441,11 @@ export default function StudioPage() {
 
       <footer
         style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 24,
           background: '#007acc',
           display: 'flex',
           alignItems: 'center',
@@ -477,14 +453,16 @@ export default function StudioPage() {
           padding: '0 10px',
           color: '#fff',
           fontSize: 11,
-          fontWeight: 600,
+          fontWeight: 650,
+          zIndex: 20,
+          boxSizing: 'border-box',
         }}
       >
         <span>Nirmaan</span>
         <span>Step {project.current_step + 1}/{project.steps.length}</span>
         <span>{project.difficulty}</span>
-        <span>{project.tech_stack.slice(0, 4).join('  ·  ')}</span>
-        {adaptiveMessage && <span style={{ marginLeft: 'auto', opacity: 0.95 }}>{adaptiveMessage}</span>}
+        <span>{project.tech_stack.slice(0, 4).join('  -  ')}</span>
+        {adaptiveMessage && <span style={{ marginLeft: 'auto', opacity: 0.95, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{adaptiveMessage}</span>}
       </footer>
 
       <PsiModal projectId={projectId} />
@@ -493,34 +471,48 @@ export default function StudioPage() {
   )
 }
 
+const iconButtonStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: 6,
+  background: '#1f1f1f',
+  color: '#d4d4d4',
+  display: 'grid',
+  placeItems: 'center',
+  cursor: 'pointer',
+}
+
 function topButtonStyle(disabled: boolean): React.CSSProperties {
   return {
-    height: 24,
-    border: '1px solid #555',
-    borderRadius: 4,
-    background: disabled ? '#3c3c3c' : '#2d2d2d',
+    height: 28,
+    border: '1px solid #444',
+    borderRadius: 5,
+    background: disabled ? '#262626' : '#1f1f1f',
     color: disabled ? '#777' : '#d4d4d4',
     display: 'inline-flex',
     alignItems: 'center',
     gap: 5,
-    padding: '0 8px',
+    padding: '0 9px',
     fontSize: 11,
-    fontWeight: 700,
+    fontWeight: 750,
     cursor: disabled ? 'not-allowed' : 'pointer',
+    whiteSpace: 'nowrap',
   }
 }
 
 const primaryButtonStyle: React.CSSProperties = {
-  height: 24,
+  height: 28,
   border: '1px solid #238636',
-  borderRadius: 4,
+  borderRadius: 5,
   background: '#238636',
   color: '#fff',
   display: 'inline-flex',
   alignItems: 'center',
   gap: 5,
-  padding: '0 9px',
+  padding: '0 10px',
   fontSize: 11,
-  fontWeight: 800,
+  fontWeight: 850,
   cursor: 'pointer',
+  whiteSpace: 'nowrap',
 }

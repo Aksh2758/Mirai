@@ -1,6 +1,6 @@
 'use client'
 import { useStudioStore } from '@/store/studioStore'
-import { runPSIAnalysis } from '@/lib/api'
+import { runPSIAnalysis, syncStudioWorkspace } from '@/lib/api'
 
 interface Props {
   projectId: string
@@ -32,10 +32,12 @@ export default function PsiModal({ projectId }: Props) {
     setPsiLoading(true)
     setPsiResult(null)
     try {
+      await syncStudioWorkspace(projectId).catch(() => null)
       const result = await runPSIAnalysis(projectId)
       setPsiResult(result)
-    } catch (e: any) {
-      alert(`PSI analysis failed: ${e.message}`)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unknown error'
+      alert(`PSI analysis failed: ${message}`)
     } finally {
       setPsiLoading(false)
     }

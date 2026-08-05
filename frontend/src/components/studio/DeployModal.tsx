@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useStudioStore } from '@/store/studioStore'
-import { deployProject, saveVercelToken } from '@/lib/api'
+import { deployProject, saveVercelToken, syncStudioWorkspace } from '@/lib/api'
 import type { DeployStep } from '@/lib/types'
 
 interface Props {
@@ -44,6 +44,7 @@ export default function DeployModal({ projectId, psiScore }: Props) {
     setCopied(false)
 
     try {
+      await syncStudioWorkspace(projectId).catch(() => null)
       const response = await deployProject(projectId, psiScore)
       if (!response.body) throw new Error('No response body')
 
@@ -85,13 +86,14 @@ export default function DeployModal({ projectId, psiScore }: Props) {
                 detail: parsed.detail,
               })
             }
-          } catch (parseErr) {
+          } catch {
             console.warn('Failed to parse SSE event:', data)
           }
         }
       }
-    } catch (e: any) {
-      alert(`Deploy failed: ${e.message}`)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unknown error'
+      alert(`Deploy failed: ${message}`)
       setDeploySteps(INITIAL_STEPS)
     }
   }
@@ -103,8 +105,9 @@ export default function DeployModal({ projectId, psiScore }: Props) {
       await saveVercelToken(vercelTokenInput.trim())
       setVercelSaved(true)
       setVercelTokenInput('')
-    } catch (e: any) {
-      alert(`Failed to save token: ${e.message}`)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Unknown error'
+      alert(`Failed to save token: ${message}`)
     } finally {
       setSavingVercel(false)
     }
