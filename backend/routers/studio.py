@@ -17,9 +17,11 @@ from services.vercel_deploy_service import deploy_to_vercel
 from services.linkedin_service import generate_linkedin_post
 import json
 import asyncio
+import os
 import uuid as uuid_lib
 import math
 import re
+from pathlib import Path
 from datetime import datetime, timezone
 
 router = APIRouter()
@@ -214,6 +216,140 @@ Rules:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
+# ─── VS CODE SERVER WORKSPACE SYNC ───────────────────────────────────────────
+
+class SyncWorkspaceRequest(BaseModel):
+    project_id: str
+
+
+IGNORED_WORKSPACE_DIRS = {
+    ".git",
+    ".next",
+    ".turbo",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    "__pycache__",
+    ".venv",
+    "venv",
+}
+
+IGNORED_WORKSPACE_SUFFIXES = {
+    ".pyc",
+    ".pyo",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".pdf",
+    ".zip",
+    ".tar",
+    ".gz",
+}
+
+
+def _resolve_code_server_workspace(project_id: str) -> Path | None:
+    """
+    Optional bridge for real VS Code/code-server workspaces.
+
+    Set CODE_SERVER_WORKSPACE_ROOT to the folder code-server edits. If it contains
+    {project_id}, it is formatted per project. Otherwise, if a child folder named
+    after the project_id exists, that child is used; falling back to the root keeps
+    single-project local setups simple.
+    """
+    configured = os.getenv("CODE_SERVER_WORKSPACE_ROOT")
+    if not configured:
+        return None
+
+    root = Path(configured.format(project_id=project_id)).expanduser().resolve()
+    project_child = root / project_id
+    if project_child.exists() and project_child.is_dir():
+        return project_child
+    return root
+
+
+def _read_workspace_files(root: Path) -> list[dict]:
+    if not root.exists() or not root.is_dir():
+        return []
+
+    files: list[dict] = []
+    total_bytes = 0
+    max_files = 200
+    max_file_bytes = 256 * 1024
+    max_total_bytes = 2 * 1024 * 1024
+
+    for path in sorted(root.rglob("*")):
+        if len(files) >= max_files or total_bytes >= max_total_bytes:
+            break
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root)
+        rel_parts = set(rel.parts)
+        if rel_parts & IGNORED_WORKSPACE_DIRS:
+            continue
+        if path.suffix.lower() in IGNORED_WORKSPACE_SUFFIXES:
+            continue
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        if size > max_file_bytes:
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        except OSError:
+            continue
+        total_bytes += len(content.encode("utf-8"))
+        files.append({
+            "filename": rel.as_posix(),
+            "content": content,
+            "updated_at": datetime.now(timezone.utc),
+        })
+
+    return files
+
+
+@router.post("/sync-workspace")
+async def sync_workspace(
+    request: SyncWorkspaceRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Optional no-op-safe sync from code-server's real filesystem workspace into
+    MongoDB before PSI/deploy. This keeps those buttons useful after switching
+    the Studio editor from Monaco to VS Code Web.
+    """
+    col = get_projects_collection()
+    try:
+        oid = ObjectId(request.project_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid project ID")
+
+    doc = await col.find_one({"_id": oid, "user_id": user_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    workspace = _resolve_code_server_workspace(request.project_id)
+    if workspace is None:
+        return {"ok": True, "synced": False, "file_count": len(doc.get("code_files", [])), "reason": "CODE_SERVER_WORKSPACE_ROOT not configured"}
+
+    files = _read_workspace_files(workspace)
+    if not files:
+        return {"ok": True, "synced": False, "file_count": len(doc.get("code_files", [])), "reason": f"No readable files found in {workspace}"}
+
+    await col.update_one(
+        {"_id": oid, "user_id": user_id},
+        {"$set": {"code_files": files, "updated_at": datetime.now(timezone.utc)}}
+    )
+    return {"ok": True, "synced": True, "file_count": len(files)}
+
+
+
 @router.get("/{project_id}")
 async def get_project(
     project_id: str,
@@ -231,6 +367,8 @@ async def get_project(
         raise HTTPException(status_code=404, detail="Project not found")
 
     return serialize_project(doc)
+
+
 
 # ─── PSI ENDPOINT ────────────────────────────────────────────────────────────
 
