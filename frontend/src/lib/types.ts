@@ -50,7 +50,7 @@ export interface ManualAnswer {
   answer: string
 }
 
-export interface User extends UserProfile {}
+export type User = UserProfile
 
 export interface SkillScore {
   label: string          // e.g. "Python", "React", "SQL"
@@ -260,4 +260,77 @@ export interface DashboardSummary {
   active_project: DashboardProject | null    // null if no project selected yet
   top_internships: DashboardInternship[]     // always 0–3 items, never errors if jobs fail
   scanner_completed: boolean
+}
+
+// ─── Tech Radar / Networking ─────────────────────────────────────────────────
+
+export type TechRadarMode = 'buddy' | 'team' | 'doubt'
+
+export interface TechRadarPost {
+  id: string
+  mode: TechRadarMode
+  title: string
+  body: string
+  tags: string[]
+  author_name: string
+  author_role: string
+  connections_count: number
+  created_at: string
+}
+
+export interface TechRadarPostsResponse {
+  posts: TechRadarPost[]
+  counts: Record<TechRadarMode, number>
+}
+
+export interface CreateTechRadarPostRequest {
+  mode: TechRadarMode
+  title: string
+  body: string
+  tags: string[]
+}
+
+// ─── Grooming Lab ────────────────────────────────────────────────────────────
+
+export type GroomingLabKey = 'resume' | 'mock' | 'aptitude' | 'interview'
+
+export interface GroomingLabItem {
+  key: GroomingLabKey
+  title: string
+  subtitle: string
+  metric: string
+}
+
+export interface GroomingPrepStep {
+  title: string
+  detail: string
+  time: string
+}
+
+export interface GroomingActiveProject {
+  id: string
+  title: string
+  tech_stack: string[]
+  difficulty: string
+}
+
+export interface GroomingReadinessPlan {
+  id: string
+  target_role: string
+  project_name: string
+  focus_area: GroomingLabKey
+  notes: string | null
+  generated_bullets: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface GroomingLabResponse {
+  target_role: string
+  active_project: GroomingActiveProject | null
+  readiness_score: number
+  labs: GroomingLabItem[]
+  prep_paths: Record<GroomingLabKey, GroomingPrepStep[]>
+  resume_bullets: string[]
+  saved_plan: GroomingReadinessPlan | null
 }

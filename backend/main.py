@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # Import routers
-from routers import scanner, analyzer, studio, jobs, dashboard, auth
+from routers import scanner, analyzer, studio, jobs, dashboard, auth, tech_radar, grooming
 
 # Load environment variables from .env at project root
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -41,6 +41,8 @@ app.include_router(studio.router, prefix="/studio", tags=["studio"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(tech_radar.router, prefix="/tech-radar", tags=["tech-radar"])
+app.include_router(grooming.router, prefix="/grooming", tags=["grooming"])
 
 @app.get("/health")
 def health():
