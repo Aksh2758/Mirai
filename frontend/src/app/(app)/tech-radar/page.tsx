@@ -1,59 +1,97 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-
-type RadarMode = 'buddy' | 'team' | 'doubt'
+import { connectToTechRadarPost, createTechRadarPost, fetchTechRadarPosts } from '@/lib/api'
+import type { TechRadarMode, TechRadarPost } from '@/lib/types'
 
 const modes: Array<{
-  id: RadarMode
+  id: TechRadarMode
   title: string
   subtitle: string
   action: string
 }> = [
-  {
-    id: 'buddy',
-    title: 'Find a learning buddy',
-    subtitle: 'Pair with someone learning the same stack or project path.',
-    action: 'Create buddy post',
-  },
-  {
-    id: 'team',
-    title: 'Group up for competitions',
-    subtitle: 'Build a small team for hackathons, sprints, and hiring challenges.',
-    action: 'Start team callout',
-  },
-  {
-    id: 'doubt',
-    title: 'Ask or answer doubts',
-    subtitle: 'Post blockers and get help from peers who already solved them.',
-    action: 'Ask a doubt',
-  },
+  { id: 'buddy', title: 'Find a learning buddy', subtitle: 'Pair with someone learning the same stack or project path.', action: 'Create buddy post' },
+  { id: 'team', title: 'Group up for competitions', subtitle: 'Build a small team for hackathons, sprints, and hiring challenges.', action: 'Start team callout' },
+  { id: 'doubt', title: 'Ask or answer doubts', subtitle: 'Post blockers and get help from peers who already solved them.', action: 'Ask a doubt' },
 ]
-
-const samplePosts: Record<RadarMode, Array<{ name: string; role: string; title: string; body: string; tags: string[]; time: string }>> = {
-  buddy: [
-    { name: 'Meera', role: 'Frontend learner', title: 'React + TypeScript accountability partner', body: 'Looking for someone to build mini projects with 4 days a week and review each other pull requests.', tags: ['React', 'TypeScript', 'Evening'], time: '12 min ago' },
-    { name: 'Rohit', role: 'Backend learner', title: 'FastAPI and PostgreSQL study pair', body: 'I am following the API roadmap and want to discuss architecture and deployment every weekend.', tags: ['FastAPI', 'PostgreSQL', 'Weekend'], time: '34 min ago' },
-  ],
-  team: [
-    { name: 'Aisha', role: 'AI builder', title: 'Need 2 members for a student hackathon', body: 'We have a designer and ML person. Need backend and frontend members for an education product sprint.', tags: ['Hackathon', 'Backend', 'Frontend'], time: '1 hr ago' },
-    { name: 'Kabir', role: 'Full-stack dev', title: 'Open source sprint team', body: 'Creating a 3-person group to contribute to beginner-friendly Python issues this month.', tags: ['Open Source', 'Python', 'Remote'], time: '2 hrs ago' },
-  ],
-  doubt: [
-    { name: 'Tanya', role: 'Project builder', title: 'JWT refresh token flow doubt', body: 'My access token refresh works locally but fails after deployment. Need someone to review the flow.', tags: ['Auth', 'JWT', 'Deployment'], time: '8 min ago' },
-    { name: 'Dev', role: 'Interview prep', title: 'SQL join explanation needed', body: 'I can solve basic joins but get confused with subqueries in interview problems.', tags: ['SQL', 'Interview', 'Beginner'], time: '27 min ago' },
-  ],
-}
 
 export default function TechRadarPage() {
   const router = useRouter()
-  const [activeMode, setActiveMode] = useState<RadarMode>('buddy')
+  const [activeMode, setActiveMode] = useState<TechRadarMode>('buddy')
+  const [posts, setPosts] = useState<TechRadarPost[]>([])
+  const [counts, setCounts] = useState<Record<TechRadarMode, number>>({ buddy: 0, team: 0, doubt: 0 })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
   const [draftDetails, setDraftDetails] = useState('')
+  const [draftTags, setDraftTags] = useState('')
 
   const active = useMemo(() => modes.find((mode) => mode.id === activeMode) || modes[0], [activeMode])
+  const activePosts = posts.filter((post) => post.mode === activeMode)
+  const liveCount = counts.buddy + counts.team + counts.doubt
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await fetchTechRadarPosts()
+        if (!cancelled) {
+          setPosts(result.posts)
+          setCounts(result.counts)
+        }
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load Tech Radar')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  async function publishPost() {
+    if (!draftTitle.trim() || !draftDetails.trim()) {
+      setNotice('Add a title and details before publishing.')
+      return
+    }
+    setSaving(true)
+    setNotice(null)
+    try {
+      const created = await createTechRadarPost({
+        mode: activeMode,
+        title: draftTitle,
+        body: draftDetails,
+        tags: draftTags.split(',').map((tag) => tag.trim()).filter(Boolean),
+      })
+      setPosts((current) => [created, ...current])
+      setCounts((current) => ({ ...current, [created.mode]: current[created.mode] + 1 }))
+      setDraftTitle('')
+      setDraftDetails('')
+      setDraftTags('')
+      setNotice('Post published and saved to backend.')
+    } catch (e: unknown) {
+      setNotice(e instanceof Error ? e.message : 'Could not publish post')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function connect(postId: string) {
+    setNotice(null)
+    try {
+      await connectToTechRadarPost(postId)
+      setPosts((current) => current.map((post) => post.id === postId ? { ...post, connections_count: post.connections_count + 1 } : post))
+      setNotice('Connection request saved.')
+    } catch (e: unknown) {
+      setNotice(e instanceof Error ? e.message : 'Could not connect to post')
+    }
+  }
 
   return (
     <main style={pageStyle}>
@@ -63,23 +101,29 @@ export default function TechRadarPage() {
           <div>
             <div style={eyebrowStyle}>Tech Radar</div>
             <h1 style={{ margin: '8px 0 10px', fontSize: 42, letterSpacing: -1.7, lineHeight: 1.04 }}>Find people for the next thing you want to build.</h1>
-            <p style={leadStyle}>A lightweight networking space for Nirmaan learners to find a buddy, form competition teams, and solve doubts faster.</p>
+            <p style={leadStyle}>A backend-backed networking space for Nirmaan learners to find buddies, form teams, and solve doubts faster.</p>
           </div>
           <div style={heroCardStyle}>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.52)', textTransform: 'uppercase', letterSpacing: 1.3 }}>Live Rooms</div>
-            <div style={{ fontSize: 44, fontWeight: 950, marginTop: 8 }}>24</div>
-            <div style={{ color: 'rgba(255,255,255,0.56)', fontSize: 13, lineHeight: 1.5 }}>Active learners available for discussions, hackathon matching, and roadmap accountability.</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.52)', textTransform: 'uppercase', letterSpacing: 1.3 }}>Live Posts</div>
+            <div style={{ fontSize: 44, fontWeight: 950, marginTop: 8 }}>{liveCount}</div>
+            <div style={{ color: 'rgba(255,255,255,0.56)', fontSize: 13, lineHeight: 1.5 }}>Posts are loaded from the FastAPI + MongoDB Tech Radar endpoints.</div>
           </div>
         </section>
 
         <section style={modeGridStyle}>
           {modes.map((mode) => (
             <button key={mode.id} onClick={() => setActiveMode(mode.id)} style={{ ...modeCardStyle, ...(mode.id === activeMode ? activeModeCardStyle : {}) }}>
-              <div style={{ fontSize: 15, fontWeight: 900 }}>{mode.title}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                <span style={{ fontSize: 15, fontWeight: 900 }}>{mode.title}</span>
+                <span style={{ opacity: 0.7 }}>{counts[mode.id]}</span>
+              </div>
               <p style={{ margin: '7px 0 0', color: mode.id === activeMode ? 'rgba(255,255,255,0.66)' : '#6F6B64', fontSize: 12, lineHeight: 1.45 }}>{mode.subtitle}</p>
             </button>
           ))}
         </section>
+
+        {error && <div style={alertStyle}>{error}</div>}
+        {notice && <div style={noticeStyle}>{notice}</div>}
 
         <section style={contentGridStyle}>
           <div style={panelStyle}>
@@ -88,26 +132,35 @@ export default function TechRadarPage() {
                 <div style={eyebrowStyle}>{active.title}</div>
                 <h2 style={{ margin: '5px 0 0', fontSize: 24, letterSpacing: -0.7 }}>{active.action}</h2>
               </div>
-              <span style={pillStyle}>{samplePosts[activeMode].length} active</span>
+              <span style={pillStyle}>{activePosts.length} active</span>
             </div>
 
-            <div style={{ display: 'grid', gap: 12 }}>
-              {samplePosts[activeMode].map((post) => (
-                <article key={`${post.name}-${post.title}`} style={postCardStyle}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: 17, letterSpacing: -0.35 }}>{post.title}</h3>
-                      <div style={{ color: '#6F6B64', fontSize: 12, marginTop: 4 }}>{post.name} · {post.role} · {post.time}</div>
+            {loading ? (
+              <p style={mutedTextStyle}>Loading posts from backend...</p>
+            ) : activePosts.length === 0 ? (
+              <EmptyState text="No posts in this section yet. Create the first one and it will be stored in MongoDB." />
+            ) : (
+              <div style={{ display: 'grid', gap: 12 }}>
+                {activePosts.map((post) => (
+                  <article key={post.id} style={postCardStyle}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 17, letterSpacing: -0.35 }}>{post.title}</h3>
+                        <div style={{ color: '#6F6B64', fontSize: 12, marginTop: 4 }}>{post.author_name} · {post.author_role} · {formatDate(post.created_at)}</div>
+                      </div>
+                      <button onClick={() => connect(post.id)} style={connectButtonStyle}>Connect</button>
                     </div>
-                    <button style={connectButtonStyle}>Connect</button>
-                  </div>
-                  <p style={{ margin: '12px 0', color: '#38342E', fontSize: 13, lineHeight: 1.55 }}>{post.body}</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {post.tags.map((tag) => <span key={tag} style={tagStyle}>{tag}</span>)}
-                  </div>
-                </article>
-              ))}
-            </div>
+                    <p style={{ margin: '12px 0', color: '#38342E', fontSize: 13, lineHeight: 1.55 }}>{post.body}</p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {post.tags.map((tag) => <span key={tag} style={tagStyle}>{tag}</span>)}
+                      </div>
+                      <span style={{ color: '#6F6B64', fontSize: 11 }}>{post.connections_count} requests</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
 
           <aside style={panelStyle}>
@@ -117,13 +170,25 @@ export default function TechRadarPage() {
             <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} placeholder="Example: Need a React buddy" style={inputStyle} />
             <label style={labelStyle}>Details</label>
             <textarea value={draftDetails} onChange={(event) => setDraftDetails(event.target.value)} placeholder="Share your stack, timing, goal, and how people should join." style={{ ...inputStyle, minHeight: 120, resize: 'vertical' }} />
-            <button style={primaryButtonStyle}>Publish prototype post</button>
-            <p style={{ margin: '12px 0 0', color: '#6F6B64', fontSize: 12, lineHeight: 1.45 }}>This page is ready as a product prototype. The next step is connecting posts to Supabase or MongoDB for persistence.</p>
+            <label style={labelStyle}>Tags, comma separated</label>
+            <input value={draftTags} onChange={(event) => setDraftTags(event.target.value)} placeholder="React, Evening, Remote" style={inputStyle} />
+            <button onClick={publishPost} disabled={saving} style={{ ...primaryButtonStyle, opacity: saving ? 0.55 : 1 }}>{saving ? 'Publishing...' : 'Publish post'}</button>
+            <p style={{ margin: '12px 0 0', color: '#6F6B64', fontSize: 12, lineHeight: 1.45 }}>This form calls POST /tech-radar/posts. Connect calls are stored through POST /tech-radar/posts/:id/connect.</p>
           </aside>
         </section>
       </div>
     </main>
   )
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <div style={{ ...postCardStyle, color: '#6F6B64', fontSize: 13, lineHeight: 1.5 }}>{text}</div>
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Recently'
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 const pageStyle: CSSProperties = { minHeight: '100vh', background: '#F5F1EA', color: '#0D0D0D', fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }
@@ -146,3 +211,6 @@ const tagStyle: CSSProperties = { background: '#DFF1E8', color: '#197247', borde
 const labelStyle: CSSProperties = { display: 'block', fontSize: 12, fontWeight: 850, margin: '12px 0 6px' }
 const inputStyle: CSSProperties = { width: '100%', border: '1px solid #E1DDD4', borderRadius: 11, padding: '11px 12px', background: '#FBF8F2', color: '#0D0D0D', outline: 'none', boxSizing: 'border-box', font: 'inherit', fontSize: 13 }
 const primaryButtonStyle: CSSProperties = { width: '100%', marginTop: 14, background: '#0D0D0D', color: '#fff', border: 'none', borderRadius: 11, padding: '12px 14px', fontSize: 13, fontWeight: 900, cursor: 'pointer' }
+const alertStyle: CSSProperties = { background: '#FDE8E1', color: '#B42318', border: '1px solid #F8C9BD', borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 13 }
+const noticeStyle: CSSProperties = { background: '#DFF1E8', color: '#197247', border: '1px solid #BCE2CC', borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 13 }
+const mutedTextStyle: CSSProperties = { color: '#6F6B64', fontSize: 13, lineHeight: 1.5 }

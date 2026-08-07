@@ -1,49 +1,82 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-
-type LabKey = 'resume' | 'mock' | 'aptitude' | 'interview'
-
-const labs: Array<{ key: LabKey; title: string; subtitle: string; metric: string }> = [
-  { key: 'resume', title: 'Resume Builder', subtitle: 'Convert projects into recruiter-ready impact bullets.', metric: 'JD fit' },
-  { key: 'mock', title: 'Mock Interview', subtitle: 'Practice behavioral and project deep-dive questions.', metric: 'AI panel' },
-  { key: 'aptitude', title: 'Aptitude Prep', subtitle: 'Timed quantitative, logic, and verbal practice paths.', metric: '20 min' },
-  { key: 'interview', title: 'Interview Prep', subtitle: 'DSA, system design basics, HR, and follow-up plans.', metric: 'Roadmap' },
-]
-
-const prepPaths: Record<LabKey, Array<{ title: string; detail: string; time: string }>> = {
-  resume: [
-    { title: 'Profile headline', detail: 'Write a target-role headline using your scanner role and strongest skills.', time: '5 min' },
-    { title: 'Project impact bullets', detail: 'Turn Nirmaan Studio work into measurable STAR bullets.', time: '15 min' },
-    { title: 'JD keyword match', detail: 'Compare your resume language with one job description before applying.', time: '10 min' },
-  ],
-  mock: [
-    { title: 'Project walkthrough', detail: 'Explain problem, architecture, tradeoffs, PSI improvements, and deployment.', time: '12 min' },
-    { title: 'Behavioral round', detail: 'Practice teamwork, ownership, failure, and learning velocity stories.', time: '15 min' },
-    { title: 'Feedback loop', detail: 'Receive scorecard and repeat weak question categories.', time: '8 min' },
-  ],
-  aptitude: [
-    { title: 'Quant basics', detail: 'Percentages, ratios, time-work, profit-loss, and speed-distance drills.', time: '20 min' },
-    { title: 'Logic sets', detail: 'Arrangements, syllogisms, directions, series, and data interpretation.', time: '20 min' },
-    { title: 'Verbal practice', detail: 'Reading comprehension, grammar, sentence correction, and para jumbles.', time: '15 min' },
-  ],
-  interview: [
-    { title: 'Technical recap', detail: 'Revise core stack concepts based on your active project tech stack.', time: '25 min' },
-    { title: 'DSA warm-up', detail: 'Arrays, strings, hash maps, stacks, queues, and two-pointer patterns.', time: '30 min' },
-    { title: 'HR readiness', detail: 'Prepare intro, strengths, weakness, relocation, salary, and closing questions.', time: '20 min' },
-  ],
-}
+import { fetchGroomingLab, generateResumeBullets, saveReadinessPlan } from '@/lib/api'
+import type { GroomingLabKey, GroomingLabResponse } from '@/lib/types'
 
 export default function GroomingLabPage() {
   const router = useRouter()
-  const [activeLab, setActiveLab] = useState<LabKey>('resume')
-  const [role, setRole] = useState('Backend Engineer')
-  const [project, setProject] = useState('REST API with Auth')
+  const [activeLab, setActiveLab] = useState<GroomingLabKey>('resume')
+  const [data, setData] = useState<GroomingLabResponse | null>(null)
+  const [role, setRole] = useState('Software Engineer')
+  const [project, setProject] = useState('Nirmaan project')
+  const [bullets, setBullets] = useState<string[]>([])
+  const [notes, setNotes] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const active = useMemo(() => labs.find((lab) => lab.key === activeLab) || labs[0], [activeLab])
-  const bullets = useMemo(() => buildResumeBullets(role, project), [role, project])
+  const active = useMemo(() => data?.labs.find((lab) => lab.key === activeLab) || data?.labs[0], [activeLab, data])
+  const activePath = data?.prep_paths[activeLab] || []
+  const techStack = data?.active_project?.tech_stack || []
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const result = await fetchGroomingLab()
+        if (!cancelled) {
+          setData(result)
+          setRole(result.saved_plan?.target_role || result.target_role)
+          setProject(result.saved_plan?.project_name || result.active_project?.title || 'Nirmaan project')
+          setBullets(result.saved_plan?.generated_bullets?.length ? result.saved_plan.generated_bullets : result.resume_bullets)
+          setNotes(result.saved_plan?.notes || '')
+          if (result.saved_plan?.focus_area) setActiveLab(result.saved_plan.focus_area)
+        }
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load Grooming Lab')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  async function refreshBullets() {
+    setNotice(null)
+    try {
+      const result = await generateResumeBullets({ target_role: role, project_name: project, tech_stack: techStack })
+      setBullets(result.bullets)
+      setNotice('Resume bullets generated by backend.')
+    } catch (e: unknown) {
+      setNotice(e instanceof Error ? e.message : 'Could not generate bullets')
+    }
+  }
+
+  async function savePlan() {
+    setSaving(true)
+    setNotice(null)
+    try {
+      await saveReadinessPlan({
+        target_role: role,
+        project_name: project,
+        focus_area: activeLab,
+        notes,
+        generated_bullets: bullets,
+      })
+      setNotice('Readiness plan saved to backend.')
+    } catch (e: unknown) {
+      setNotice(e instanceof Error ? e.message : 'Could not save readiness plan')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <main style={pageStyle}>
@@ -54,74 +87,76 @@ export default function GroomingLabPage() {
           <div>
             <div style={eyebrowStyle}>Grooming Lab</div>
             <h1 style={{ margin: '8px 0 10px', fontSize: 42, letterSpacing: -1.8, lineHeight: 1.04 }}>Prepare for the job beyond code.</h1>
-            <p style={leadStyle}>Resume building, mock interviews, aptitude prep, interview readiness, and career polish now live directly inside Nirmaan.</p>
+            <p style={leadStyle}>Resume building, mock interviews, aptitude prep, interview readiness, and career polish now load from FastAPI endpoints.</p>
           </div>
           <aside style={scoreCardStyle}>
             <div style={{ color: 'rgba(255,255,255,0.52)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.4 }}>Readiness Score</div>
-            <div style={{ fontSize: 50, fontWeight: 950, margin: '6px 0 2px' }}>72</div>
-            <div style={{ color: 'rgba(255,255,255,0.58)', fontSize: 13 }}>Complete resume and one mock interview to unlock deployment-ready career score.</div>
+            <div style={{ fontSize: 50, fontWeight: 950, margin: '6px 0 2px' }}>{data?.readiness_score ?? '--'}</div>
+            <div style={{ color: 'rgba(255,255,255,0.58)', fontSize: 13 }}>Score is calculated by backend from scanner profile, active project, XP, and saved plan.</div>
           </aside>
         </section>
 
-        <section style={labGridStyle}>
-          {labs.map((lab) => (
-            <button key={lab.key} onClick={() => setActiveLab(lab.key)} style={{ ...labCardStyle, ...(lab.key === activeLab ? activeLabCardStyle : {}) }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
-                <div style={{ fontSize: 15, fontWeight: 900 }}>{lab.title}</div>
-                <span style={{ ...smallPillStyle, ...(lab.key === activeLab ? activeSmallPillStyle : {}) }}>{lab.metric}</span>
-              </div>
-              <p style={{ margin: '8px 0 0', color: lab.key === activeLab ? 'rgba(255,255,255,0.64)' : '#6F6B64', fontSize: 12, lineHeight: 1.45 }}>{lab.subtitle}</p>
-            </button>
-          ))}
-        </section>
+        {error && <div style={alertStyle}>{error}</div>}
+        {notice && <div style={noticeStyle}>{notice}</div>}
 
-        <section style={contentGridStyle}>
-          <div style={panelStyle}>
-            <div style={eyebrowStyle}>{active.title}</div>
-            <h2 style={{ margin: '6px 0 16px', fontSize: 26, letterSpacing: -0.85 }}>Your guided prep path</h2>
-            <div style={{ display: 'grid', gap: 12 }}>
-              {prepPaths[activeLab].map((step, index) => (
-                <article key={step.title} style={pathCardStyle}>
-                  <div style={stepNumberStyle}>{index + 1}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                      <h3 style={{ margin: 0, fontSize: 16, letterSpacing: -0.35 }}>{step.title}</h3>
-                      <span style={{ color: '#197247', fontSize: 11, fontWeight: 900 }}>{step.time}</span>
-                    </div>
-                    <p style={{ margin: '5px 0 0', color: '#6F6B64', fontSize: 13, lineHeight: 1.5 }}>{step.detail}</p>
+        {loading || !data ? (
+          <section style={panelStyle}><p style={{ color: '#6F6B64', fontSize: 13 }}>Loading Grooming Lab from backend...</p></section>
+        ) : (
+          <>
+            <section style={labGridStyle}>
+              {data.labs.map((lab) => (
+                <button key={lab.key} onClick={() => setActiveLab(lab.key)} style={{ ...labCardStyle, ...(lab.key === activeLab ? activeLabCardStyle : {}) }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: 15, fontWeight: 900 }}>{lab.title}</div>
+                    <span style={{ ...smallPillStyle, ...(lab.key === activeLab ? activeSmallPillStyle : {}) }}>{lab.metric}</span>
                   </div>
-                </article>
+                  <p style={{ margin: '8px 0 0', color: lab.key === activeLab ? 'rgba(255,255,255,0.64)' : '#6F6B64', fontSize: 12, lineHeight: 1.45 }}>{lab.subtitle}</p>
+                </button>
               ))}
-            </div>
-          </div>
+            </section>
 
-          <aside style={panelStyle}>
-            <div style={eyebrowStyle}>Smart Resume Draft</div>
-            <h2 style={{ margin: '6px 0 14px', fontSize: 22, letterSpacing: -0.7 }}>Project to resume bullets</h2>
-            <label style={labelStyle}>Target role</label>
-            <input value={role} onChange={(event) => setRole(event.target.value)} style={inputStyle} />
-            <label style={labelStyle}>Project name</label>
-            <input value={project} onChange={(event) => setProject(event.target.value)} style={inputStyle} />
-            <div style={draftBoxStyle}>
-              {bullets.map((bullet) => <p key={bullet} style={{ margin: '0 0 10px', fontSize: 12.5, lineHeight: 1.5 }}>• {bullet}</p>)}
-            </div>
-            <button style={primaryButtonStyle}>Save readiness plan</button>
-            <p style={{ margin: '12px 0 0', color: '#6F6B64', fontSize: 12, lineHeight: 1.45 }}>This is a native Nirmaan version of Grooming Lab. It can later connect to AI scoring, resume export, and interview transcripts.</p>
-          </aside>
-        </section>
+            <section style={contentGridStyle}>
+              <div style={panelStyle}>
+                <div style={eyebrowStyle}>{active?.title || 'Prep Path'}</div>
+                <h2 style={{ margin: '6px 0 16px', fontSize: 26, letterSpacing: -0.85 }}>Your guided prep path</h2>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {activePath.map((step, index) => (
+                    <article key={step.title} style={pathCardStyle}>
+                      <div style={stepNumberStyle}>{index + 1}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                          <h3 style={{ margin: 0, fontSize: 16, letterSpacing: -0.35 }}>{step.title}</h3>
+                          <span style={{ color: '#197247', fontSize: 11, fontWeight: 900 }}>{step.time}</span>
+                        </div>
+                        <p style={{ margin: '5px 0 0', color: '#6F6B64', fontSize: 13, lineHeight: 1.5 }}>{step.detail}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <aside style={panelStyle}>
+                <div style={eyebrowStyle}>Smart Resume Draft</div>
+                <h2 style={{ margin: '6px 0 14px', fontSize: 22, letterSpacing: -0.7 }}>Project to resume bullets</h2>
+                <label style={labelStyle}>Target role</label>
+                <input value={role} onChange={(event) => setRole(event.target.value)} style={inputStyle} />
+                <label style={labelStyle}>Project name</label>
+                <input value={project} onChange={(event) => setProject(event.target.value)} style={inputStyle} />
+                <label style={labelStyle}>Notes for prep plan</label>
+                <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Example: Focus on HR answers and SQL aptitude." style={{ ...inputStyle, minHeight: 82, resize: 'vertical' }} />
+                <div style={draftBoxStyle}>
+                  {bullets.map((bullet) => <p key={bullet} style={{ margin: '0 0 10px', fontSize: 12.5, lineHeight: 1.5 }}>• {bullet}</p>)}
+                </div>
+                <button onClick={refreshBullets} style={secondaryButtonStyle}>Regenerate bullets from backend</button>
+                <button onClick={savePlan} disabled={saving} style={{ ...primaryButtonStyle, opacity: saving ? 0.55 : 1 }}>{saving ? 'Saving...' : 'Save readiness plan'}</button>
+                <p style={{ margin: '12px 0 0', color: '#6F6B64', fontSize: 12, lineHeight: 1.45 }}>This panel calls /grooming/lab, /grooming/resume-bullets, and /grooming/readiness-plan.</p>
+              </aside>
+            </section>
+          </>
+        )}
       </div>
     </main>
   )
-}
-
-function buildResumeBullets(role: string, project: string) {
-  const cleanRole = role.trim() || 'Software Engineer'
-  const cleanProject = project.trim() || 'Nirmaan project'
-  return [
-    `Built ${cleanProject} aligned to ${cleanRole} expectations, covering authentication, clean architecture, and deployment readiness.`,
-    'Improved production readiness through PSI feedback, code quality checks, security review, and structured project documentation.',
-    'Practiced interview storytelling by explaining project scope, tradeoffs, debugging decisions, and measurable learning outcomes.',
-  ]
 }
 
 const pageStyle: CSSProperties = { minHeight: '100vh', background: '#F5F1EA', color: '#0D0D0D', fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }
@@ -143,4 +178,7 @@ const stepNumberStyle: CSSProperties = { width: 30, height: 30, borderRadius: 10
 const labelStyle: CSSProperties = { display: 'block', fontSize: 12, fontWeight: 850, margin: '12px 0 6px' }
 const inputStyle: CSSProperties = { width: '100%', border: '1px solid #E1DDD4', borderRadius: 11, padding: '11px 12px', background: '#FBF8F2', color: '#0D0D0D', outline: 'none', boxSizing: 'border-box', font: 'inherit', fontSize: 13 }
 const draftBoxStyle: CSSProperties = { marginTop: 14, background: '#FBF8F2', border: '1px solid #EEEAE2', borderRadius: 14, padding: 14, color: '#38342E' }
-const primaryButtonStyle: CSSProperties = { width: '100%', marginTop: 14, background: '#0D0D0D', color: '#fff', border: 'none', borderRadius: 11, padding: '12px 14px', fontSize: 13, fontWeight: 900, cursor: 'pointer' }
+const primaryButtonStyle: CSSProperties = { width: '100%', marginTop: 10, background: '#0D0D0D', color: '#fff', border: 'none', borderRadius: 11, padding: '12px 14px', fontSize: 13, fontWeight: 900, cursor: 'pointer' }
+const secondaryButtonStyle: CSSProperties = { width: '100%', marginTop: 14, background: '#DFF1E8', color: '#197247', border: 'none', borderRadius: 11, padding: '11px 14px', fontSize: 13, fontWeight: 900, cursor: 'pointer' }
+const alertStyle: CSSProperties = { background: '#FDE8E1', color: '#B42318', border: '1px solid #F8C9BD', borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 13 }
+const noticeStyle: CSSProperties = { background: '#DFF1E8', color: '#197247', border: '1px solid #BCE2CC', borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 13 }

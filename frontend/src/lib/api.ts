@@ -10,7 +10,13 @@ import type {
   JobsResponse,
   DashboardSummary,
   RoadmapStep,
-  CopilotMessage
+  CopilotMessage,
+  TechRadarPostsResponse,
+  TechRadarPost,
+  CreateTechRadarPostRequest,
+  GroomingLabResponse,
+  GroomingLabKey,
+  GroomingReadinessPlan
 } from './types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -225,4 +231,55 @@ export const updatePace = async () => ({ status: 'ok' })
 
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
   return request<DashboardSummary>('/dashboard/summary')
+}
+
+// ─── TECH RADAR ───────────────────────────────────────────────────────────────
+
+export async function fetchTechRadarPosts(mode?: string): Promise<TechRadarPostsResponse> {
+  const query = mode ? `?mode=${encodeURIComponent(mode)}` : ''
+  return request<TechRadarPostsResponse>(`/tech-radar/posts${query}`)
+}
+
+export async function createTechRadarPost(payload: CreateTechRadarPostRequest): Promise<TechRadarPost> {
+  return request<TechRadarPost>('/tech-radar/posts', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function connectToTechRadarPost(postId: string, message?: string): Promise<{ ok: boolean; status: string }> {
+  return request<{ ok: boolean; status: string }>(`/tech-radar/posts/${postId}/connect`, {
+    method: 'POST',
+    body: JSON.stringify({ message: message || '' }),
+  })
+}
+
+// ─── GROOMING LAB ─────────────────────────────────────────────────────────────
+
+export async function fetchGroomingLab(): Promise<GroomingLabResponse> {
+  return request<GroomingLabResponse>('/grooming/lab')
+}
+
+export async function generateResumeBullets(payload: {
+  target_role: string
+  project_name: string
+  tech_stack: string[]
+}): Promise<{ bullets: string[] }> {
+  return request<{ bullets: string[] }>('/grooming/resume-bullets', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function saveReadinessPlan(payload: {
+  target_role: string
+  project_name: string
+  focus_area: GroomingLabKey
+  notes?: string
+  generated_bullets: string[]
+}): Promise<{ ok: boolean; plan: GroomingReadinessPlan }> {
+  return request<{ ok: boolean; plan: GroomingReadinessPlan }>('/grooming/readiness-plan', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }
