@@ -16,7 +16,8 @@ import type {
   CreateTechRadarPostRequest,
   GroomingLabResponse,
   GroomingLabKey,
-  GroomingReadinessPlan
+  GroomingReadinessPlan,
+  DiscoveryHubResponse
 } from './types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -282,4 +283,11 @@ export async function saveReadinessPlan(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+// ─── DISCOVERY HUB ────────────────────────────────────────────────────────────
+
+export async function fetchDiscoveryHub(refresh: boolean = false): Promise<DiscoveryHubResponse> {
+  const query = refresh ? '?refresh=true' : ''
+  return request<DiscoveryHubResponse>(`/discovery/hub${query}`)
 }

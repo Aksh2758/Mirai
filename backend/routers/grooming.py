@@ -169,7 +169,7 @@ async def generate_resume_bullets(
     request: ResumeBulletsRequest,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Generate deterministic resume bullets on the backend."""
+    """Generate resume bullets on the backend from user-provided career context."""
     return {
         "bullets": _build_resume_bullets(
             request.target_role,
@@ -184,7 +184,7 @@ async def save_readiness_plan(
     request: ReadinessPlanRequest,
     user_id: str = Depends(get_current_user_id),
 ):
-    """Persist the user's current Grooming Lab plan."""
+    """Persist the user's current Grooming Lab readiness plan."""
     now = datetime.now(timezone.utc)
     doc = {
         "user_id": user_id,
@@ -200,7 +200,10 @@ async def save_readiness_plan(
         {"$set": doc, "$setOnInsert": {"created_at": now}},
         upsert=True,
     )
-    plan = await _plans_collection().find_one({"_id": result.upserted_id}) if result.upserted_id else await _plans_collection().find_one({"user_id": user_id, "focus_area": request.focus_area})
+    if result.upserted_id:
+        plan = await _plans_collection().find_one({"_id": result.upserted_id})
+    else:
+        plan = await _plans_collection().find_one({"user_id": user_id, "focus_area": request.focus_area})
     if not plan:
         raise HTTPException(status_code=500, detail="Could not save readiness plan")
     return {"ok": True, "plan": _serialize_plan(plan)}

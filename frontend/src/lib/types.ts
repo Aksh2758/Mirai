@@ -334,3 +334,37 @@ export interface GroomingLabResponse {
   resume_bullets: string[]
   saved_plan: GroomingReadinessPlan | null
 }
+
+// ─── Discovery Hub ───────────────────────────────────────────────────────────
+
+export interface HackathonListing {
+  id: string
+  title: string
+  organizer: string
+  location: string
+  is_online: boolean
+  start_date: string
+  end_date: string
+  url: string
+  source: string
+  status: 'upcoming' | 'open'
+  themes: string[]
+}
+
+export interface DiscoveryMeta {
+  source?: string
+  role_searched?: string
+  cached: boolean
+  cache_age_hours: number
+  total: number
+}
+
+export interface DiscoveryHubResponse {
+  internships: JobListing[]
+  internship_meta: DiscoveryMeta
+  internships_error: string | null
+  hackathons: HackathonListing[]
+  hackathon_meta: DiscoveryMeta
+  hackathons_error: string | null
+  fetched_at: string
+}
