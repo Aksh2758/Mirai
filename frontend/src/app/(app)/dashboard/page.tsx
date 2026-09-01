@@ -22,8 +22,8 @@ const palette = {
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', mark: '▦', active: true },
   { label: 'Studio', href: '/scanner', mark: '⌁' },
-  { label: 'Internships', href: '/internships', mark: '▣' },
-  { label: 'Hackathons', href: '/tech-radar', mark: '◉' },
+  { label: 'Discovery Hub', href: '/discover', mark: '▣' },
+  { label: 'Hackathons', href: '/discover', mark: '◉' },
   { label: 'Grooming Lab', href: '/grooming', mark: '✂' },
   { label: 'Tech Radar', href: '/tech-radar', mark: '◒' },
 ]
@@ -133,10 +133,11 @@ export default function DashboardPage() {
 
         <section style={gridStyle}>
           <TodoCard project={data.active_project} onEdit={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
-          <TopMatchesCard jobs={data.top_internships} onViewAll={() => router.push('/internships')} />
+          <TopMatchesCard jobs={data.top_internships} onViewAll={() => router.push('/discover')} />
           <CurrentProjectCard project={data.active_project} onOpen={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
-          <HackathonsCard onOpen={() => router.push('/tech-radar')} />
+          <HackathonsCard onOpen={() => router.push('/discover')} />
           <GroomingLabCard onOpen={() => router.push('/grooming')} />
+          <DiscoveryHubCard onOpen={() => router.push('/discover')} />
         </section>
       </main>
     </div>
@@ -210,7 +211,7 @@ function TopMatchesCard({ jobs, onViewAll }: { jobs: DashboardSummary['top_inter
     <DashboardCard>
       <CardHeader title="Top Matches" action="See All →" onAction={onViewAll} />
       {visibleJobs.length === 0 ? (
-        <EmptyBlock title="No matches yet" text="Open Internships to fetch role-based opportunities." action="Find internships" onAction={onViewAll} />
+        <EmptyBlock title="No matches yet" text="Open Discovery Hub to fetch internet opportunities." action="Open Discovery Hub" onAction={onViewAll} />
       ) : (
         <div>
           {visibleJobs.map((job, index) => (
@@ -258,36 +259,27 @@ function CurrentProjectCard({ project, onOpen }: { project: DashboardSummary['ac
 }
 
 function HackathonsCard({ onOpen }: { onOpen: () => void }) {
-  const events = [
-    { tag: 'Devfolio · Online · 5 days left', title: 'HackIndia 2025', desc: 'Build backend, AI, or full-stack tracks with a peer team.' },
-    { tag: 'MLH · In-person · Bangalore', title: 'PyCon Sprint', desc: 'Python focused sprint for students and new contributors.' },
-  ]
-
   return (
-    <DashboardCard style={{ gridColumn: 'span 3' }}>
-      <CardHeader title="Hackathons" action="Find Team →" onAction={onOpen} />
-      <div style={{ display: 'grid', gap: 12 }}>
-        {events.map((event) => (
-          <button key={event.title} onClick={onOpen} style={eventCardStyle}>
-            <div style={{ color: 'rgba(255,255,255,0.34)', textTransform: 'uppercase', letterSpacing: 1.25, fontSize: 9 }}>{event.tag}</div>
-            <div style={{ color: '#fff', fontWeight: 850, marginTop: 6, fontSize: 15 }}>{event.title}</div>
-            <div style={{ color: 'rgba(255,255,255,0.45)', marginTop: 4, fontSize: 11 }}>{event.desc}</div>
-          </button>
-        ))}
-      </div>
+    <DashboardCard style={{ gridColumn: 'span 2' }}>
+      <CardHeader title="Hackathons" action="Open Hub →" onAction={onOpen} />
+      <button onClick={onOpen} style={eventCardStyle}>
+        <div style={{ color: 'rgba(255,255,255,0.34)', textTransform: 'uppercase', letterSpacing: 1.25, fontSize: 9 }}>Internet Discovery</div>
+        <div style={{ color: '#fff', fontWeight: 850, marginTop: 6, fontSize: 15 }}>Live hackathons from Discovery Hub</div>
+        <div style={{ color: 'rgba(255,255,255,0.45)', marginTop: 4, fontSize: 11 }}>Fetch upcoming competitions and internships through backend-powered sources.</div>
+      </button>
     </DashboardCard>
   )
 }
 
 function GroomingLabCard({ onOpen }: { onOpen: () => void }) {
   const labs = [
-    { title: 'Resume Builder', detail: 'Tailor to any JD in 30s', mark: 'CV' },
-    { title: 'Mock Interview', detail: 'Based on your project', mark: 'MI' },
-    { title: 'Aptitude Prep', detail: '20 questions · 15 min', mark: 'AP' },
+    { title: 'Resume Builder', detail: 'Backend-generated project bullets', mark: 'CV' },
+    { title: 'Mock Interview', detail: 'Personalized prep path from API', mark: 'MI' },
+    { title: 'Aptitude Prep', detail: 'Quant, logic, and verbal plan', mark: 'AP' },
   ]
 
   return (
-    <DashboardCard style={{ gridColumn: 'span 3' }}>
+    <DashboardCard style={{ gridColumn: 'span 2' }}>
       <CardHeader title="Grooming Lab" action="Open →" onAction={onOpen} />
       <div style={{ display: 'grid', gap: 10 }}>
         {labs.map((lab) => (
@@ -297,6 +289,31 @@ function GroomingLabCard({ onOpen }: { onOpen: () => void }) {
               <div style={{ fontSize: 11, color: palette.mutedInk, marginTop: 2 }}>{lab.detail}</div>
             </div>
             <span style={{ color: '#9B6ED6', fontSize: 11, fontWeight: 900 }}>{lab.mark}</span>
+          </button>
+        ))}
+      </div>
+    </DashboardCard>
+  )
+}
+
+function DiscoveryHubCard({ onOpen }: { onOpen: () => void }) {
+  const items = [
+    { title: 'Internet internships', detail: 'Role-matched jobs from backend search', mark: 'JOB' },
+    { title: 'Upcoming hackathons', detail: 'Live events from public hackathon feeds', mark: 'HCK' },
+    { title: 'Fresh refresh', detail: 'Pull latest source data when needed', mark: 'API' },
+  ]
+
+  return (
+    <DashboardCard style={{ gridColumn: 'span 2' }}>
+      <CardHeader title="Discovery Hub" action="Open →" onAction={onOpen} />
+      <div style={{ display: 'grid', gap: 10 }}>
+        {items.map((item) => (
+          <button key={item.title} onClick={onOpen} style={labRowStyle}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 820 }}>{item.title}</div>
+              <div style={{ fontSize: 11, color: palette.mutedInk, marginTop: 2 }}>{item.detail}</div>
+            </div>
+            <span style={{ color: '#9B6ED6', fontSize: 11, fontWeight: 900 }}>{item.mark}</span>
           </button>
         ))}
       </div>
