@@ -190,17 +190,26 @@ export interface DeployResult {
 
 // ─── Jobs / Internships ───────────────────────────────────────────────────────
 
+export type InternshipWorkType = 'remote' | 'hybrid' | 'onsite'
+
 export interface JobListing {
   job_id: string
   title: string
   company: string
   location: string      // e.g. "Bangalore, India" or "Remote"
   is_remote: boolean
+  work_type: InternshipWorkType
   apply_url: string
-  description_snippet: string   // First 200 chars of job description
+  description_snippet: string   // First 280 chars of job description
   required_skills: string[]     // Extracted from description
-  match_pct: number             // 0–100, calculated by backend against user's skill_scores
+  matched_skills: string[]      // Skills found in both profile/project context and JD
+  missing_skills: string[]      // Important JD skills not yet present in profile context
+  match_reasons: string[]       // Backend-generated explanation for match percentage
+  match_pct: number             // 0–100, calculated by backend against user's Skill DNA/project
+  stipend_min: number | null
+  duration_months: number | null
   posted_at: string             // ISO date string
+  source: string
 }
 
 export interface JobsResponse {
@@ -337,6 +346,12 @@ export interface GroomingLabResponse {
 
 // ─── Discovery Hub ───────────────────────────────────────────────────────────
 
+export interface HackathonTeammatePrefill {
+  title: string
+  body: string
+  tags: string[]
+}
+
 export interface HackathonListing {
   id: string
   title: string
@@ -345,10 +360,23 @@ export interface HackathonListing {
   is_online: boolean
   start_date: string
   end_date: string
+  duration_hours: number | null
+  duration_days: number | null
+  team_size_min: number | null
+  team_size_max: number | null
+  team_required: boolean
+  teammate_prefill: HackathonTeammatePrefill | null
   url: string
   source: string
   status: 'upcoming' | 'open'
   themes: string[]
+  logo_url?: string
+  banner_url?: string
+}
+
+export interface HackathonsResponse {
+  hackathons: HackathonListing[]
+  meta: DiscoveryMeta
 }
 
 export interface DiscoveryMeta {
