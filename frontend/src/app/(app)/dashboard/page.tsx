@@ -23,7 +23,7 @@ const navItems = [
   { label: 'Dashboard', href: '/dashboard', mark: '▦', active: true },
   { label: 'Studio', href: '/scanner', mark: '⌁' },
   { label: 'Discovery Hub', href: '/discover', mark: '▣' },
-  { label: 'Hackathons', href: '/discover', mark: '◉' },
+  { label: 'Hackathons', href: '/hackathons', mark: '◉' },
   { label: 'Grooming Lab', href: '/grooming', mark: '✂' },
   { label: 'Tech Radar', href: '/tech-radar', mark: '◒' },
 ]
@@ -133,9 +133,9 @@ export default function DashboardPage() {
 
         <section style={gridStyle}>
           <TodoCard project={data.active_project} onEdit={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
-          <TopMatchesCard jobs={data.top_internships} onViewAll={() => router.push('/discover')} />
+          <TopMatchesCard jobs={data.top_internships} onViewAll={() => router.push('/internships')} />
           <CurrentProjectCard project={data.active_project} onOpen={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
-          <HackathonsCard onOpen={() => router.push('/discover')} />
+          <HackathonsCard onOpen={() => router.push('/hackathons')} />
           <GroomingLabCard onOpen={() => router.push('/grooming')} />
           <DiscoveryHubCard onOpen={() => router.push('/discover')} />
         </section>
@@ -211,7 +211,7 @@ function TopMatchesCard({ jobs, onViewAll }: { jobs: DashboardSummary['top_inter
     <DashboardCard>
       <CardHeader title="Top Matches" action="See All →" onAction={onViewAll} />
       {visibleJobs.length === 0 ? (
-        <EmptyBlock title="No matches yet" text="Open Discovery Hub to fetch internet opportunities." action="Open Discovery Hub" onAction={onViewAll} />
+        <EmptyBlock title="No matches yet" text="Open Internships to fetch internet opportunities." action="Open Discovery Hub" onAction={onViewAll} />
       ) : (
         <div>
           {visibleJobs.map((job, index) => (
@@ -261,7 +261,7 @@ function CurrentProjectCard({ project, onOpen }: { project: DashboardSummary['ac
 function HackathonsCard({ onOpen }: { onOpen: () => void }) {
   return (
     <DashboardCard style={{ gridColumn: 'span 2' }}>
-      <CardHeader title="Hackathons" action="Open Hub →" onAction={onOpen} />
+      <CardHeader title="Hackathons" action="Open Hackathons →" onAction={onOpen} />
       <button onClick={onOpen} style={eventCardStyle}>
         <div style={{ color: 'rgba(255,255,255,0.34)', textTransform: 'uppercase', letterSpacing: 1.25, fontSize: 9 }}>Internet Discovery</div>
         <div style={{ color: '#fff', fontWeight: 850, marginTop: 6, fontSize: 15 }}>Live hackathons from Discovery Hub</div>

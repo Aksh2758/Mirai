@@ -17,7 +17,8 @@ import type {
   GroomingLabResponse,
   GroomingLabKey,
   GroomingReadinessPlan,
-  DiscoveryHubResponse
+  DiscoveryHubResponse,
+  HackathonsResponse
 } from './types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -290,4 +291,21 @@ export async function saveReadinessPlan(payload: {
 export async function fetchDiscoveryHub(refresh: boolean = false): Promise<DiscoveryHubResponse> {
   const query = refresh ? '?refresh=true' : ''
   return request<DiscoveryHubResponse>(`/discovery/hub${query}`)
+}
+
+export async function fetchHackathons(options: {
+  refresh?: boolean
+  mode?: 'online' | 'offline'
+  location?: string
+  maxDurationDays?: number
+  minTeamSize?: number
+} = {}): Promise<HackathonsResponse> {
+  const params = new URLSearchParams()
+  if (options.refresh) params.set('refresh', 'true')
+  if (options.mode) params.set('mode', options.mode)
+  if (options.location?.trim()) params.set('location', options.location.trim())
+  if (options.maxDurationDays) params.set('max_duration_days', String(options.maxDurationDays))
+  if (options.minTeamSize) params.set('min_team_size', String(options.minTeamSize))
+  const query = params.toString() ? `?${params.toString()}` : ''
+  return request<HackathonsResponse>(`/discovery/hackathons${query}`)
 }

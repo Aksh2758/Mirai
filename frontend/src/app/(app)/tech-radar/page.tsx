@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { connectToTechRadarPost, createTechRadarPost, fetchTechRadarPosts } from '@/lib/api'
 import type { TechRadarMode, TechRadarPost } from '@/lib/types'
 
@@ -19,6 +19,7 @@ const modes: Array<{
 
 export default function TechRadarPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [activeMode, setActiveMode] = useState<TechRadarMode>('buddy')
   const [posts, setPosts] = useState<TechRadarPost[]>([])
   const [counts, setCounts] = useState<Record<TechRadarMode, number>>({ buddy: 0, team: 0, doubt: 0 })
@@ -33,6 +34,23 @@ export default function TechRadarPage() {
   const active = useMemo(() => modes.find((mode) => mode.id === activeMode) || modes[0], [activeMode])
   const activePosts = posts.filter((post) => post.mode === activeMode)
   const liveCount = counts.buddy + counts.team + counts.doubt
+
+  useEffect(() => {
+    const mode = searchParams.get('mode')
+    const title = searchParams.get('title')
+    const body = searchParams.get('body')
+    const tags = searchParams.get('tags')
+
+    if (mode === 'buddy' || mode === 'team' || mode === 'doubt') {
+      setActiveMode(mode)
+    }
+    if (title) setDraftTitle(title)
+    if (body) setDraftDetails(body)
+    if (tags) setDraftTags(tags)
+    if (mode || title || body || tags) {
+      setNotice('Team post details are prefilled. Review and publish when ready.')
+    }
+  }, [searchParams])
 
   useEffect(() => {
     let cancelled = false
