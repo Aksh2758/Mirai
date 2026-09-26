@@ -25,6 +25,8 @@ export default function TechRadarPage() {
   const [counts, setCounts] = useState<Record<TechRadarMode, number>>({ buddy: 0, team: 0, doubt: 0 })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
@@ -62,6 +64,7 @@ export default function TechRadarPage() {
         if (!cancelled) {
           setPosts(result.posts)
           setCounts(result.counts)
+          setHasMore(Boolean(result.has_more))
         }
       } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load Tech Radar')
@@ -72,6 +75,24 @@ export default function TechRadarPage() {
     load()
     return () => { cancelled = true }
   }, [])
+
+  async function loadMorePosts() {
+    setLoadingMore(true)
+    setNotice(null)
+    try {
+      const result = await fetchTechRadarPosts(undefined, { offset: posts.length, limit: 60 })
+      setPosts((current) => {
+        const seen = new Set(current.map((post) => post.id))
+        return [...current, ...result.posts.filter((post) => !seen.has(post.id))]
+      })
+      setCounts(result.counts)
+      setHasMore(Boolean(result.has_more))
+    } catch (e: unknown) {
+      setNotice(e instanceof Error ? e.message : 'Could not load more posts')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   async function publishPost() {
     if (!draftTitle.trim() || !draftDetails.trim()) {
@@ -150,7 +171,7 @@ export default function TechRadarPage() {
                 <div style={eyebrowStyle}>{active.title}</div>
                 <h2 style={{ margin: '5px 0 0', fontSize: 24, letterSpacing: -0.7 }}>{active.action}</h2>
               </div>
-              <span style={pillStyle}>{activePosts.length} active</span>
+              <span style={pillStyle}>{activePosts.length} shown</span>
             </div>
 
             {loading ? (
@@ -177,6 +198,11 @@ export default function TechRadarPage() {
                     </div>
                   </article>
                 ))}
+                {hasMore && (
+                  <button onClick={loadMorePosts} disabled={loadingMore} style={primaryButtonStyle}>
+                    {loadingMore ? 'Loading...' : 'Load more posts'}
+                  </button>
+                )}
               </div>
             )}
           </div>

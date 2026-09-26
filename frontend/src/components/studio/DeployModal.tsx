@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useStudioStore } from '@/store/studioStore'
-import { deployProject, saveVercelToken, syncStudioWorkspace } from '@/lib/api'
+import { deployProject, saveVercelToken } from '@/lib/api'
 import type { DeployStep } from '@/lib/types'
 
 interface Props {
@@ -44,7 +44,6 @@ export default function DeployModal({ projectId, psiScore }: Props) {
     setCopied(false)
 
     try {
-      await syncStudioWorkspace(projectId).catch(() => null)
       const response = await deployProject(projectId, psiScore)
       if (!response.body) throw new Error('No response body')
 

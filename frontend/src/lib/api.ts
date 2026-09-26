@@ -18,7 +18,9 @@ import type {
   GroomingLabKey,
   GroomingReadinessPlan,
   DiscoveryHubResponse,
-  HackathonsResponse
+  HackathonsResponse,
+  StudioFileRecord,
+  StudioActivityEvent
 } from './types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -157,10 +159,50 @@ export async function fetchChatHistory(
   )
 }
 
-export async function syncStudioWorkspace(projectId: string): Promise<{ ok: boolean; synced: boolean; file_count: number; reason?: string }> {
-  return request<{ ok: boolean; synced: boolean; file_count: number; reason?: string }>('/studio/sync-workspace', {
+
+export async function fetchStudioFiles(projectId: string): Promise<{ files: StudioFileRecord[] }> {
+  return request<{ files: StudioFileRecord[] }>(`/studio/${projectId}/files`)
+}
+
+export async function saveStudioFile(projectId: string, path: string, content: string): Promise<{ ok: boolean; file: StudioFileRecord }> {
+  return request<{ ok: boolean; file: StudioFileRecord }>('/studio/files/save', {
     method: 'POST',
-    body: JSON.stringify({ project_id: projectId }),
+    body: JSON.stringify({ project_id: projectId, path, content }),
+  })
+}
+
+export async function createStudioFile(projectId: string, path: string, content: string = ''): Promise<{ ok: boolean; file: StudioFileRecord }> {
+  return request<{ ok: boolean; file: StudioFileRecord }>('/studio/files/create', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, path, content }),
+  })
+}
+
+export async function deleteStudioFile(projectId: string, path: string): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/studio/files/delete', {
+    method: 'DELETE',
+    body: JSON.stringify({ project_id: projectId, path }),
+  })
+}
+
+export async function renameStudioFile(projectId: string, oldPath: string, newPath: string): Promise<{ ok: boolean; file: StudioFileRecord }> {
+  return request<{ ok: boolean; file: StudioFileRecord }>('/studio/files/rename', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, old_path: oldPath, new_path: newPath }),
+  })
+}
+
+export async function duplicateStudioFile(projectId: string, path: string, newPath: string): Promise<{ ok: boolean; file: StudioFileRecord }> {
+  return request<{ ok: boolean; file: StudioFileRecord }>('/studio/files/duplicate', {
+    method: 'POST',
+    body: JSON.stringify({ project_id: projectId, path, new_path: newPath }),
+  })
+}
+
+export async function recordStudioActivity(event: StudioActivityEvent): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>('/studio/activity', {
+    method: 'POST',
+    body: JSON.stringify(event),
   })
 }
 
@@ -237,8 +279,12 @@ export async function fetchDashboardSummary(): Promise<DashboardSummary> {
 
 // ─── TECH RADAR ───────────────────────────────────────────────────────────────
 
-export async function fetchTechRadarPosts(mode?: string): Promise<TechRadarPostsResponse> {
-  const query = mode ? `?mode=${encodeURIComponent(mode)}` : ''
+export async function fetchTechRadarPosts(mode?: string, options: { limit?: number; offset?: number } = {}): Promise<TechRadarPostsResponse> {
+  const params = new URLSearchParams()
+  if (mode) params.set('mode', mode)
+  if (options.limit) params.set('limit', String(options.limit))
+  if (options.offset) params.set('offset', String(options.offset))
+  const query = params.toString() ? `?${params.toString()}` : ''
   return request<TechRadarPostsResponse>(`/tech-radar/posts${query}`)
 }
 

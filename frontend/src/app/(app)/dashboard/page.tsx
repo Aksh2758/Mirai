@@ -22,8 +22,8 @@ const palette = {
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', mark: '▦', active: true },
   { label: 'Studio', href: '/scanner', mark: '⌁' },
-  { label: 'Discovery Hub', href: '/discover', mark: '▣' },
-  { label: 'Hackathons', href: '/hackathons', mark: '◉' },
+  { label: 'Internships', href: '/discover/internships', mark: '▣' },
+  { label: 'Hackathons', href: '/discover/hackathons', mark: '◉' },
   { label: 'Grooming Lab', href: '/grooming', mark: '✂' },
   { label: 'Tech Radar', href: '/tech-radar', mark: '◒' },
 ]
@@ -133,9 +133,9 @@ export default function DashboardPage() {
 
         <section style={gridStyle}>
           <TodoCard project={data.active_project} onEdit={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
-          <TopMatchesCard jobs={data.top_internships} onViewAll={() => router.push('/internships')} />
+          <TopMatchesCard jobs={data.top_internships} onViewAll={() => router.push('/discover/internships')} />
           <CurrentProjectCard project={data.active_project} onOpen={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
-          <HackathonsCard onOpen={() => router.push('/hackathons')} />
+          <HackathonsCard onOpen={() => router.push('/discover/hackathons')} />
           <GroomingLabCard onOpen={() => router.push('/grooming')} />
           <DiscoveryHubCard onOpen={() => router.push('/discover')} />
         </section>
