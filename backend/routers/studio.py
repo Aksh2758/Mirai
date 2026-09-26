@@ -65,6 +65,32 @@ class RenameFileRequest(BaseModel):
     new_filename: str
 
 
+class StudioFileRequest(BaseModel):
+    project_id: str
+    path: str
+    content: str = ""
+
+
+class StudioRenameFileRequest(BaseModel):
+    project_id: str
+    old_path: str
+    new_path: str
+
+
+class StudioDuplicateFileRequest(BaseModel):
+    project_id: str
+    path: str
+    new_path: str
+
+
+class StudioActivityRequest(BaseModel):
+    project_id: str
+    event_type: str
+    path: str | None = None
+    message: str | None = None
+    metadata: dict | None = None
+
+
 class CompleteStepRequest(BaseModel):
     project_id: str
     step_id: str
@@ -200,6 +226,19 @@ Rules:
         insert_result = await col.insert_one(doc)
         project_id = str(insert_result.inserted_id)
 
+        # Seed normalized Studio files collection for the Monaco/WebContainer IDE.
+        files_col = get_mongo_db()["files"]
+        now = datetime.now(timezone.utc)
+        await files_col.insert_many([
+            {
+                "project_id": project_id,
+                "user_id": user_id,
+                "path": steps[0].starter_filename,
+                "content": steps[0].starter_code,
+                "updated_at": now,
+            }
+        ])
+
         # Save project_id and scanner_completed to Supabase
         upsert_user_profile(user_id, {
             "active_project_id": project_id,
@@ -216,137 +255,184 @@ Rules:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 
-# ─── VS CODE SERVER WORKSPACE SYNC ───────────────────────────────────────────
+# ─── NORMALIZED STUDIO FILES + ACTIVITY ───────────────────────────────────────
 
-class SyncWorkspaceRequest(BaseModel):
-    project_id: str
-
-
-IGNORED_WORKSPACE_DIRS = {
-    ".git",
-    ".next",
-    ".turbo",
-    "node_modules",
-    "dist",
-    "build",
-    "coverage",
-    "__pycache__",
-    ".venv",
-    "venv",
-}
-
-IGNORED_WORKSPACE_SUFFIXES = {
-    ".pyc",
-    ".pyo",
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".webp",
-    ".ico",
-    ".pdf",
-    ".zip",
-    ".tar",
-    ".gz",
-}
+def _files_collection():
+    return get_mongo_db()["files"]
 
 
-def _resolve_code_server_workspace(project_id: str) -> Path | None:
-    """
-    Optional bridge for real VS Code/code-server workspaces.
-
-    Set CODE_SERVER_WORKSPACE_ROOT to the folder code-server edits. If it contains
-    {project_id}, it is formatted per project. Otherwise, if a child folder named
-    after the project_id exists, that child is used; falling back to the root keeps
-    single-project local setups simple.
-    """
-    configured = os.getenv("CODE_SERVER_WORKSPACE_ROOT")
-    if not configured:
-        return None
-
-    root = Path(configured.format(project_id=project_id)).expanduser().resolve()
-    project_child = root / project_id
-    if project_child.exists() and project_child.is_dir():
-        return project_child
-    return root
+def _activity_collection():
+    return get_mongo_db()["studio_activity_events"]
 
 
-def _read_workspace_files(root: Path) -> list[dict]:
-    if not root.exists() or not root.is_dir():
-        return []
-
-    files: list[dict] = []
-    total_bytes = 0
-    max_files = 200
-    max_file_bytes = 256 * 1024
-    max_total_bytes = 2 * 1024 * 1024
-
-    for path in sorted(root.rglob("*")):
-        if len(files) >= max_files or total_bytes >= max_total_bytes:
-            break
-        if not path.is_file():
-            continue
-        rel = path.relative_to(root)
-        rel_parts = set(rel.parts)
-        if rel_parts & IGNORED_WORKSPACE_DIRS:
-            continue
-        if path.suffix.lower() in IGNORED_WORKSPACE_SUFFIXES:
-            continue
-        try:
-            size = path.stat().st_size
-        except OSError:
-            continue
-        if size > max_file_bytes:
-            continue
-        try:
-            content = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        except OSError:
-            continue
-        total_bytes += len(content.encode("utf-8"))
-        files.append({
-            "filename": rel.as_posix(),
-            "content": content,
-            "updated_at": datetime.now(timezone.utc),
-        })
-
-    return files
+def _clean_file_path(path: str) -> str:
+    cleaned = path.strip().replace("\\", "/").lstrip("/")
+    parts = [part for part in cleaned.split("/") if part and part not in {".", ".."}]
+    if not parts:
+        raise HTTPException(status_code=400, detail="File path is required")
+    if any(part.startswith("..") for part in parts):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    return "/".join(parts)[:240]
 
 
-@router.post("/sync-workspace")
-async def sync_workspace(
-    request: SyncWorkspaceRequest,
-    user_id: str = Depends(get_current_user_id),
-):
-    """
-    Optional no-op-safe sync from code-server's real filesystem workspace into
-    MongoDB before PSI/deploy. This keeps those buttons useful after switching
-    the Studio editor from Monaco to VS Code Web.
-    """
-    col = get_projects_collection()
+async def _ensure_project(project_id: str, user_id: str) -> dict:
     try:
-        oid = ObjectId(request.project_id)
+        oid = ObjectId(project_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid project ID")
-
-    doc = await col.find_one({"_id": oid, "user_id": user_id})
+    doc = await get_projects_collection().find_one({"_id": oid, "user_id": user_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
+    return doc
 
-    workspace = _resolve_code_server_workspace(request.project_id)
-    if workspace is None:
-        return {"ok": True, "synced": False, "file_count": len(doc.get("code_files", [])), "reason": "CODE_SERVER_WORKSPACE_ROOT not configured"}
 
-    files = _read_workspace_files(workspace)
-    if not files:
-        return {"ok": True, "synced": False, "file_count": len(doc.get("code_files", [])), "reason": f"No readable files found in {workspace}"}
+def _serialize_file(doc: dict) -> dict:
+    return {
+        "project_id": doc.get("project_id", ""),
+        "path": doc.get("path", ""),
+        "content": doc.get("content", ""),
+        "updated_at": doc.get("updated_at", datetime.now(timezone.utc)).isoformat(),
+    }
 
-    await col.update_one(
-        {"_id": oid, "user_id": user_id},
-        {"$set": {"code_files": files, "updated_at": datetime.now(timezone.utc)}}
+
+async def _mirror_project_code_files(project_id: str, user_id: str) -> list[dict]:
+    cursor = _files_collection().find({"project_id": project_id, "user_id": user_id}).sort("path", 1)
+    files = [doc async for doc in cursor]
+    code_files = [
+        {"filename": doc.get("path", ""), "content": doc.get("content", ""), "updated_at": doc.get("updated_at", datetime.now(timezone.utc))}
+        for doc in files
+    ]
+    if code_files:
+        await get_projects_collection().update_one(
+            {"_id": ObjectId(project_id), "user_id": user_id},
+            {"$set": {"code_files": code_files, "updated_at": datetime.now(timezone.utc)}},
+        )
+    return code_files
+
+
+async def _seed_files_from_project(project_id: str, user_id: str, project_doc: dict) -> list[dict]:
+    existing = await _files_collection().count_documents({"project_id": project_id, "user_id": user_id})
+    if existing:
+        cursor = _files_collection().find({"project_id": project_id, "user_id": user_id}).sort("path", 1)
+        return [doc async for doc in cursor]
+    now = datetime.now(timezone.utc)
+    docs = []
+    for file in project_doc.get("code_files", []):
+        path = _clean_file_path(file.get("filename") or file.get("path") or "main.py")
+        docs.append({"project_id": project_id, "user_id": user_id, "path": path, "content": file.get("content", ""), "updated_at": now})
+    if not docs:
+        docs.append({"project_id": project_id, "user_id": user_id, "path": "main.py", "content": "", "updated_at": now})
+    await _files_collection().insert_many(docs)
+    return docs
+
+
+async def _record_activity(project_id: str, user_id: str, event_type: str, path: str | None = None, message: str | None = None, metadata: dict | None = None):
+    if event_type not in {"file_save", "run", "error"}:
+        raise HTTPException(status_code=400, detail="Unsupported Studio activity type")
+    await _activity_collection().insert_one({
+        "project_id": project_id,
+        "user_id": user_id,
+        "event_type": event_type,
+        "path": path,
+        "message": message,
+        "metadata": metadata or {},
+        "created_at": datetime.now(timezone.utc),
+    })
+
+
+@router.get("/{project_id}/files")
+async def list_studio_files(project_id: str, user_id: str = Depends(get_current_user_id)):
+    project_doc = await _ensure_project(project_id, user_id)
+    docs = await _seed_files_from_project(project_id, user_id, project_doc)
+    return {"files": [_serialize_file(doc) for doc in sorted(docs, key=lambda item: item.get("path", ""))]}
+
+
+@router.post("/files/save")
+async def save_studio_file(request: StudioFileRequest, user_id: str = Depends(get_current_user_id)):
+    await _ensure_project(request.project_id, user_id)
+    path = _clean_file_path(request.path)
+    now = datetime.now(timezone.utc)
+    await _files_collection().update_one(
+        {"project_id": request.project_id, "user_id": user_id, "path": path},
+        {"$set": {"project_id": request.project_id, "user_id": user_id, "path": path, "content": request.content, "updated_at": now}},
+        upsert=True,
     )
-    return {"ok": True, "synced": True, "file_count": len(files)}
+    await _mirror_project_code_files(request.project_id, user_id)
+    await _record_activity(request.project_id, user_id, "file_save", path=path, metadata={"bytes": len(request.content.encode("utf-8"))})
+    return {"ok": True, "file": {"project_id": request.project_id, "path": path, "content": request.content, "updated_at": now.isoformat()}}
+
+
+@router.post("/files/create")
+async def create_studio_file(request: StudioFileRequest, user_id: str = Depends(get_current_user_id)):
+    await _ensure_project(request.project_id, user_id)
+    path = _clean_file_path(request.path)
+    now = datetime.now(timezone.utc)
+    exists = await _files_collection().find_one({"project_id": request.project_id, "user_id": user_id, "path": path})
+    if exists:
+        raise HTTPException(status_code=409, detail=f"File '{path}' already exists")
+    doc = {"project_id": request.project_id, "user_id": user_id, "path": path, "content": request.content, "updated_at": now}
+    await _files_collection().insert_one(doc)
+    await _mirror_project_code_files(request.project_id, user_id)
+    await _record_activity(request.project_id, user_id, "file_save", path=path, metadata={"action": "create"})
+    return {"ok": True, "file": _serialize_file(doc)}
+
+
+@router.delete("/files/delete")
+async def delete_studio_file(request: StudioFileRequest, user_id: str = Depends(get_current_user_id)):
+    await _ensure_project(request.project_id, user_id)
+    path = _clean_file_path(request.path)
+    remaining = await _files_collection().count_documents({"project_id": request.project_id, "user_id": user_id})
+    if remaining <= 1:
+        raise HTTPException(status_code=400, detail="Cannot delete the last file in a project")
+    await _files_collection().delete_one({"project_id": request.project_id, "user_id": user_id, "path": path})
+    await _mirror_project_code_files(request.project_id, user_id)
+    await _record_activity(request.project_id, user_id, "file_save", path=path, metadata={"action": "delete"})
+    return {"ok": True}
+
+
+@router.post("/files/rename")
+async def rename_studio_file(request: StudioRenameFileRequest, user_id: str = Depends(get_current_user_id)):
+    await _ensure_project(request.project_id, user_id)
+    old_path = _clean_file_path(request.old_path)
+    new_path = _clean_file_path(request.new_path)
+    existing = await _files_collection().find_one({"project_id": request.project_id, "user_id": user_id, "path": old_path})
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"File '{old_path}' not found")
+    duplicate = await _files_collection().find_one({"project_id": request.project_id, "user_id": user_id, "path": new_path})
+    if duplicate:
+        raise HTTPException(status_code=409, detail=f"File '{new_path}' already exists")
+    now = datetime.now(timezone.utc)
+    await _files_collection().update_one({"_id": existing["_id"]}, {"$set": {"path": new_path, "updated_at": now}})
+    await _mirror_project_code_files(request.project_id, user_id)
+    await _record_activity(request.project_id, user_id, "file_save", path=new_path, metadata={"action": "rename", "old_path": old_path})
+    return {"ok": True, "file": {"project_id": request.project_id, "path": new_path, "content": existing.get("content", ""), "updated_at": now.isoformat()}}
+
+
+@router.post("/files/duplicate")
+async def duplicate_studio_file(request: StudioDuplicateFileRequest, user_id: str = Depends(get_current_user_id)):
+    await _ensure_project(request.project_id, user_id)
+    path = _clean_file_path(request.path)
+    new_path = _clean_file_path(request.new_path)
+    source = await _files_collection().find_one({"project_id": request.project_id, "user_id": user_id, "path": path})
+    if not source:
+        raise HTTPException(status_code=404, detail=f"File '{path}' not found")
+    duplicate = await _files_collection().find_one({"project_id": request.project_id, "user_id": user_id, "path": new_path})
+    if duplicate:
+        raise HTTPException(status_code=409, detail=f"File '{new_path}' already exists")
+    now = datetime.now(timezone.utc)
+    doc = {"project_id": request.project_id, "user_id": user_id, "path": new_path, "content": source.get("content", ""), "updated_at": now}
+    await _files_collection().insert_one(doc)
+    await _mirror_project_code_files(request.project_id, user_id)
+    await _record_activity(request.project_id, user_id, "file_save", path=new_path, metadata={"action": "duplicate", "source_path": path})
+    return {"ok": True, "file": _serialize_file(doc)}
+
+
+@router.post("/activity")
+async def record_studio_activity(request: StudioActivityRequest, user_id: str = Depends(get_current_user_id)):
+    await _ensure_project(request.project_id, user_id)
+    path = _clean_file_path(request.path) if request.path else None
+    await _record_activity(request.project_id, user_id, request.event_type, path=path, message=request.message, metadata=request.metadata)
+    return {"ok": True}
 
 
 
@@ -401,7 +487,7 @@ async def run_psi(
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    code_files = doc.get("code_files", [])
+    code_files = await _mirror_project_code_files(request.project_id, user_id) or doc.get("code_files", [])
     if not code_files:
         raise HTTPException(
             status_code=400,
@@ -535,7 +621,7 @@ async def deploy_project(
     project_title = doc.get("title", "project")
     project_brief = doc.get("brief", "")
     tech_stack = doc.get("tech_stack", [])
-    code_files = doc.get("code_files", [])
+    code_files = await _mirror_project_code_files(request.project_id, user_id) or doc.get("code_files", [])
 
     # Load user profile once
     profile = get_user_profile(user_id) or {}

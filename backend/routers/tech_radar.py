@@ -66,15 +66,19 @@ def _display_name(user_id: str, profile: dict | None) -> str:
 @router.get("/posts")
 async def list_posts(
     mode: RadarMode | None = Query(default=None),
+    limit: int = Query(default=60, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Return Tech Radar networking posts from MongoDB."""
+    """Return active Tech Radar posts from all users, newest first."""
+    _ = user_id
     query: dict = {"status": "active"}
     if mode:
         query["mode"] = mode
 
-    cursor = _posts_collection().find(query).sort("created_at", -1).limit(60)
+    cursor = _posts_collection().find(query).sort("created_at", -1).skip(offset).limit(limit)
     posts = [_serialize_post(doc) async for doc in cursor]
+    total = await _posts_collection().count_documents(query)
 
     counts = {"buddy": 0, "team": 0, "doubt": 0}
     async for row in _posts_collection().aggregate([
@@ -84,7 +88,7 @@ async def list_posts(
         if row.get("_id") in counts:
             counts[row["_id"]] = row.get("count", 0)
 
-    return {"posts": posts, "counts": counts}
+    return {"posts": posts, "counts": counts, "total": total, "has_more": offset + len(posts) < total}
 
 
 @router.post("/posts")

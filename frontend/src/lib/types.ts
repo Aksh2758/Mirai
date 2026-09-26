@@ -103,6 +103,25 @@ export interface CodeFile {
   updated_at: string
 }
 
+
+export interface StudioFileRecord {
+  project_id: string
+  path: string
+  content: string
+  updated_at: string
+}
+
+export type StudioActivityType = 'file_save' | 'run' | 'error'
+
+export interface StudioActivityEvent {
+  project_id: string
+  event_type: StudioActivityType
+  path?: string
+  message?: string
+  metadata?: Record<string, unknown>
+  created_at?: string
+}
+
 export interface Project {
   _id: string
   user_id: string
@@ -290,6 +309,8 @@ export interface TechRadarPost {
 export interface TechRadarPostsResponse {
   posts: TechRadarPost[]
   counts: Record<TechRadarMode, number>
+  total?: number
+  has_more?: boolean
 }
 
 export interface CreateTechRadarPostRequest {
