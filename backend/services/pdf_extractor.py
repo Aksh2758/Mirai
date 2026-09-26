@@ -40,7 +40,7 @@ Rules:
 - raw_text: copy the first 500 characters of the resume text here
 
 Resume text:
-{raw_text[:4000]}"""
+{raw_text[:2500]}"""
 
     result = await call_groq_json(prompt)
     result["raw_text"] = raw_text[:500]

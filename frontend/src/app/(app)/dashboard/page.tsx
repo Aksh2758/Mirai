@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { fetchDashboardSummary } from '@/lib/api'
 import type { DashboardSummary } from '@/lib/types'
+import Sidebar from '@/components/dashboard/Sidebar'
+import Topbar from '@/components/dashboard/Topbar'
 
 const palette = {
   ink: '#0D0D0D',
@@ -18,15 +20,6 @@ const palette = {
   greenSoft: '#DFF1E8',
   amber: '#D99A22',
 }
-
-const navItems = [
-  { label: 'Dashboard', href: '/dashboard', mark: '▦', active: true },
-  { label: 'Studio', href: '/scanner', mark: '⌁' },
-  { label: 'Internships', href: '/discover/internships', mark: '▣' },
-  { label: 'Hackathons', href: '/discover/hackathons', mark: '◉' },
-  { label: 'Grooming Lab', href: '/grooming', mark: '✂' },
-  { label: 'Tech Radar', href: '/tech-radar', mark: '◒' },
-]
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -80,47 +73,15 @@ export default function DashboardPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: palette.paper, color: palette.ink, fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
-      <aside style={sidebarStyle}>
-        <div style={{ height: 70, display: 'flex', alignItems: 'center', padding: '0 16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <div style={{ fontSize: 21, fontWeight: 950, color: '#fff', letterSpacing: -1.2 }}>Nirmaan<span style={{ color: '#52D273' }}>.</span></div>
-        </div>
-
-        <nav style={{ paddingTop: 18 }}>
-          {navItems.map((item) => (
-            <a key={item.label} href={item.href} style={{ ...sidebarLinkStyle, ...(item.active ? sidebarLinkActiveStyle : {}) }}>
-              <span style={{ width: 18, color: item.active ? '#fff' : 'rgba(255,255,255,0.32)' }}>{item.mark}</span>
-              <span>{item.label}</span>
-            </a>
-          ))}
-        </nav>
-
-        <div style={{ marginTop: 'auto', padding: 16, borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-          <div style={{ fontSize: 10, letterSpacing: 1.4, color: 'rgba(255,255,255,0.22)', textTransform: 'uppercase', marginBottom: 8 }}>Role Target</div>
-          <div style={{ color: '#fff', fontSize: 12, fontWeight: 650 }}>{data.user.role || 'Project Builder'}</div>
-          <button
-            onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
-            style={{ marginTop: 14, width: '100%', border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.55)', borderRadius: 10, padding: '9px 10px', fontSize: 12, cursor: 'pointer' }}
-          >
-            Sign out
-          </button>
-        </div>
-      </aside>
+      <Sidebar role={data.user.role} />
 
       <main style={mainStyle}>
-        <div style={topActionBarStyle}>
-          <button
-            onClick={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')}
-            style={deployButtonStyle}
-          >
-            {data.active_project ? 'Open Studio' : 'Start Project'}
-            <span style={{ opacity: 0.75 }}>↗</span>
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: palette.mutedInk, fontSize: 12 }}>
-            <span style={{ color: palette.amber }}>●</span> Light
-          </div>
-          <XpScore xp={data.user.xp} />
-          <div style={avatarStyle}>{initials}</div>
-        </div>
+        <Topbar 
+          onDeployClick={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} 
+          hasActiveProject={!!data.active_project} 
+          xp={data.user.xp} 
+          initials={initials} 
+        />
 
         <section style={{ marginBottom: 26 }}>
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 950, letterSpacing: -0.9, lineHeight: 1.1 }}>
@@ -136,7 +97,7 @@ export default function DashboardPage() {
           <TopMatchesCard jobs={data.top_internships} onViewAll={() => router.push('/discover/internships')} />
           <CurrentProjectCard project={data.active_project} onOpen={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
           <HackathonsCard onOpen={() => router.push('/discover/hackathons')} />
-          <GroomingLabCard onOpen={() => router.push('/grooming')} />
+          {/*<GroomingLabCard onOpen={() => router.push('/grooming')} />*/}
           <DiscoveryHubCard onOpen={() => router.push('/discover')} />
         </section>
       </main>
@@ -271,30 +232,30 @@ function HackathonsCard({ onOpen }: { onOpen: () => void }) {
   )
 }
 
-function GroomingLabCard({ onOpen }: { onOpen: () => void }) {
-  const labs = [
-    { title: 'Resume Builder', detail: 'Backend-generated project bullets', mark: 'CV' },
-    { title: 'Mock Interview', detail: 'Personalized prep path from API', mark: 'MI' },
-    { title: 'Aptitude Prep', detail: 'Quant, logic, and verbal plan', mark: 'AP' },
-  ]
+// function GroomingLabCard({ onOpen }: { onOpen: () => void }) {
+//   const labs = [
+//     { title: 'Resume Builder', detail: 'Backend-generated project bullets', mark: 'CV' },
+//     { title: 'Mock Interview', detail: 'Personalized prep path from API', mark: 'MI' },
+//     { title: 'Aptitude Prep', detail: 'Quant, logic, and verbal plan', mark: 'AP' },
+//   ]
 
-  return (
-    <DashboardCard style={{ gridColumn: 'span 2' }}>
-      <CardHeader title="Grooming Lab" action="Open →" onAction={onOpen} />
-      <div style={{ display: 'grid', gap: 10 }}>
-        {labs.map((lab) => (
-          <button key={lab.title} onClick={onOpen} style={labRowStyle}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 820 }}>{lab.title}</div>
-              <div style={{ fontSize: 11, color: palette.mutedInk, marginTop: 2 }}>{lab.detail}</div>
-            </div>
-            <span style={{ color: '#9B6ED6', fontSize: 11, fontWeight: 900 }}>{lab.mark}</span>
-          </button>
-        ))}
-      </div>
-    </DashboardCard>
-  )
-}
+//   return (
+//     <DashboardCard style={{ gridColumn: 'span 2' }}>
+//       <CardHeader title="Grooming Lab" action="Open →" onAction={onOpen} />
+//       <div style={{ display: 'grid', gap: 10 }}>
+//         {labs.map((lab) => (
+//           <button key={lab.title} onClick={onOpen} style={labRowStyle}>
+//             <div>
+//               <div style={{ fontSize: 13, fontWeight: 820 }}>{lab.title}</div>
+//               <div style={{ fontSize: 11, color: palette.mutedInk, marginTop: 2 }}>{lab.detail}</div>
+//             </div>
+//             <span style={{ color: '#9B6ED6', fontSize: 11, fontWeight: 900 }}>{lab.mark}</span>
+//           </button>
+//         ))}
+//       </div>
+//     </DashboardCard>
+//   )
+// }
 
 function DiscoveryHubCard({ onOpen }: { onOpen: () => void }) {
   const items = [

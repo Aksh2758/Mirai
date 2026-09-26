@@ -1,99 +1,87 @@
-"use client";
+'use client'
 
-import React, { useState } from "react";
+import type { CSSProperties } from 'react'
 
-interface XPData {
-  total: number;
-  percent: number;
-  breakdown: Array<{ label: string; xp: number }>;
+const palette = {
+  ink: '#0D0D0D',
+  mutedInk: '#6F6B64',
+  paper: '#F5F1EA',
+  card: '#FFFDF9',
+  line: '#E1DDD4',
+  soft: '#EEEAE2',
+  green: '#197247',
+  greenSoft: '#DFF1E8',
+  amber: '#D99A22',
 }
 
 interface TopbarProps {
-  xpData?: XPData;
-  onToggleSidebar?: () => void;
-  isDarkMode?: boolean;
-  onToggleTheme?: () => void;
+  onDeployClick: () => void
+  hasActiveProject: boolean
+  xp: number
+  initials: string
 }
 
-export default function Topbar({ xpData, onToggleSidebar, isDarkMode = true, onToggleTheme }: TopbarProps) {
-  const [showXpTooltip, setShowXpTooltip] = useState(false);
-  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
-
-  const defaultXP: XPData = {
-    total: 1090,
-    percent: 72,
-    breakdown: [
-      { label: "Projects completed", xp: 420 },
-      { label: "PSI score avg.", xp: 310 },
-      { label: "Streak bonus", xp: 180 },
-      { label: "Deploy + LinkedIn", xp: 180 },
-    ],
-  };
-
-  const xp = xpData || defaultXP;
-
+export default function Topbar({ onDeployClick, hasActiveProject, xp, initials }: TopbarProps) {
   return (
-    <div className="topbar">
-      <div className="topbar-left">
-        <button className="sidebar-toggle" onClick={onToggleSidebar} title="Toggle sidebar">
-          ≡
-        </button>
-        <span style={{ fontSize: "13px", color: "var(--muted)" }}>Dashboard</span>
+    <div style={topActionBarStyle}>
+      <button onClick={onDeployClick} style={deployButtonStyle}>
+        {hasActiveProject ? 'Open Studio' : 'Start Project'}
+        <span style={{ opacity: 0.75 }}>↗</span>
+      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: palette.mutedInk, fontSize: 12 }}>
+        <span style={{ color: palette.amber }}>●</span> Light
       </div>
-
-      <div className="topbar-right">
-        {/* XP WIDGET */}
-        <div
-          className="xp-widget"
-          onMouseEnter={() => setShowXpTooltip(true)}
-          onMouseLeave={() => setShowXpTooltip(false)}
-        >
-          <div className="xp-ring-wrap">
-            <svg width="40" height="40" viewBox="0 0 40 40">
-              <circle className="xp-bg" cx="20" cy="20" r="15" />
-              <circle className="xp-fill" cx="20" cy="20" r="15" />
-            </svg>
-            <div className="xp-num">{xp.percent}</div>
-          </div>
-          {showXpTooltip && (
-            <div className="xp-tooltip">
-              <h4>{xp.total.toLocaleString()} XP</h4>
-              <div className="xp-subtitle">Overall Growth Score</div>
-              <div className="xp-breakdown">
-                {xp.breakdown.map((item, idx) => (
-                  <div key={idx} className="xp-row">
-                    <span>{item.label}</span>
-                    <span>+{item.xp} XP</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <button className="theme-btn" onClick={onToggleTheme} title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>
-          {isDarkMode ? "☽" : "☀"}
-        </button>
-
-        {/* PROFILE */}
-        <div
-          className="profile-btn"
-          onMouseEnter={() => setShowProfileDropdown(true)}
-          onMouseLeave={() => setShowProfileDropdown(false)}
-        >
-          AK
-          {showProfileDropdown && (
-            <div className="profile-dropdown">
-              <div className="dd-item">👤 Profile</div>
-              <div className="dd-item">🏅 Badges</div>
-              <div className="dd-item">📈 Activity</div>
-              <div className="dd-item">⚙️ Settings</div>
-              <div className="dd-divider"></div>
-              <div className="dd-item danger">↪ Log out</div>
-            </div>
-          )}
-        </div>
-      </div>
+      <XpScore xp={xp} />
+      <div style={avatarStyle}>{initials}</div>
     </div>
-  );
+  )
+}
+
+function XpScore({ xp }: { xp: number }) {
+  return (
+    <div style={{ background: palette.ink, color: '#fff', borderRadius: 9, padding: '6px 16px 7px', minWidth: 80, textAlign: 'center', boxShadow: '0 10px 22px rgba(13,13,13,0.18)' }}>
+      <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.42)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 1 }}>XP Score</div>
+      <div style={{ fontSize: 18, fontWeight: 950, letterSpacing: 0.5, lineHeight: 1 }}>{xp.toLocaleString()}</div>
+    </div>
+  )
+}
+
+const topActionBarStyle: CSSProperties = {
+  position: 'fixed',
+  top: 0,
+  right: 28,
+  height: 58,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 14,
+  zIndex: 8,
+}
+
+const deployButtonStyle: CSSProperties = {
+  background: palette.ink,
+  color: '#fff',
+  border: 'none',
+  borderRadius: '0 0 10px 10px',
+  minWidth: 204,
+  height: 42,
+  padding: '0 18px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  fontSize: 13,
+  fontWeight: 800,
+  cursor: 'pointer',
+}
+
+const avatarStyle: CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 9,
+  background: palette.greenSoft,
+  color: palette.green,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: 12,
+  fontWeight: 900,
 }
