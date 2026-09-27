@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Syne, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import "@xterm/xterm/css/xterm.css";
 import { Providers } from "./Providers";
 
 const syne = Syne({

@@ -15,8 +15,8 @@ async def discovery_hub(
     Fetch internet-backed opportunities for the Discovery Hub.
 
     Internships come from the existing JSearch/RapidAPI integration through
-    get_jobs_with_cache. Hackathons come from Hack Club's public upcoming
-    hackathon feed and are cached in MongoDB.
+    get_jobs_with_cache. Hackathons come from India-oriented Devfolio/Unstop sources plus
+    India-filtered Hack Club events and are cached in MongoDB.
     """
     return await get_discovery_hub(user_id=user_id, force_refresh=refresh)
 
@@ -30,7 +30,7 @@ async def discovery_hackathons(
     min_team_size: int | None = Query(default=None, ge=1, le=20),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Fetch Hack Club hackathons with backend-side filters for the dedicated page."""
+    """Fetch India-first hackathons from multiple sources with backend-side filters."""
     _ = user_id
     return await get_hackathons(
         force_refresh=refresh,

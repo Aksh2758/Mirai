@@ -3,6 +3,13 @@ import json
 from groq import AsyncGroq
 from dotenv import load_dotenv
 
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GEMINI = True
+except ImportError:
+    HAS_GEMINI = False
+
 load_dotenv()
 
 _client: AsyncGroq | None = None
@@ -16,14 +23,31 @@ def get_groq() -> AsyncGroq:
         _client = AsyncGroq(api_key=api_key)
     return _client
 
-MODEL = "llama-3.3-70b-versatile"      # Use this model for all calls
+MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")    
 
 async def call_groq_json(prompt: str, system: str = "You are a helpful AI assistant.") -> dict:
     """
-    Makes a Groq API call and parses the JSON response.
-    The prompt must instruct the model to return ONLY JSON.
-    Raises ValueError if the response cannot be parsed as JSON.
+    Makes an AI call and parses JSON response.
+    Prioritizes GEMINI_API_KEY if available in .env, otherwise uses Groq.
     """
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if HAS_GEMINI and gemini_key and gemini_key.strip():
+        try:
+            client = genai.Client(api_key=gemini_key)
+            model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                )
+            )
+            return json.loads(response.text)
+        except Exception as e:
+            print(f"Gemini API call failed, falling back to Groq: {e}")
+
     client = get_groq()
     response = await client.chat.completions.create(
         model=MODEL,
@@ -32,16 +56,34 @@ async def call_groq_json(prompt: str, system: str = "You are a helpful AI assist
             {"role": "user", "content": prompt},
         ],
         temperature=0.3,                # Lower temperature for more consistent JSON
-        max_tokens=4000,
+        max_tokens=8000,
     )
     raw = response.choices[0].message.content.strip()
 
-    # Strip markdown code blocks if Groq wraps the JSON (it sometimes does)
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    # Strip <think> ... </think> reasoning blocks if present
+    if "<think>" in raw and "</think>" in raw:
+        raw = raw.split("</think>", 1)[1].strip()
+
+    # Extract JSON if wrapped in markdown blocks
+    if "```" in raw:
+        parts = raw.split("```")
+        for part in reversed(parts):
+            code = part.strip()
+            if code.startswith("json"):
+                code = code[4:].strip()
+            try:
+                return json.loads(code)
+            except Exception:
+                continue
+
+    # Fallback: extract substring between first { and last }
+    import re
+    match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            pass
 
     try:
         return json.loads(raw)

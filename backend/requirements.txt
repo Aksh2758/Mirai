@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 groq
+google-genai
 pydantic
 pydantic-settings
 PyMuPDF

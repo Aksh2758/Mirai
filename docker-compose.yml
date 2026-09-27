@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  vscode:
+    image: gitpod/openvscode-server:latest
+    ports:
+      - "8080:3000"
+    volumes:
+      - .:/home/workspace
+    command: --without-connection-token

@@ -321,7 +321,9 @@ async def get_jobs_with_cache(user_id: str) -> dict:
     cache_result = sb.table("jobs_cache").select("*").eq("role", role).execute()
     if cache_result.data:
         cache_row = cache_result.data[0]
-        fetched_at = datetime.fromisoformat(cache_row["fetched_at"].replace("Z", "+00:00"))
+        cache_fetched = cache_row["fetched_at"].replace("Z", "+00:00")
+        cache_fetched = re.sub(r'\.\d+', '', cache_fetched)
+        fetched_at = datetime.fromisoformat(cache_fetched)
         age_hours = (now - fetched_at).total_seconds() / 3600
         if age_hours < CACHE_TTL_HOURS:
             cached_jobs = cache_row["results"]
