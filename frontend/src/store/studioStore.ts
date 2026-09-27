@@ -1,10 +1,7 @@
 import { create } from 'zustand'
 import type { Project, CopilotMessage, CodeBlock, PsiResult, DeployStep, DeployResult } from '@/lib/types'
 
-// Virtual "pinned" tab id for the Roadmap/Instructions view that lives inside
-// the editor's tab strip (like a Welcome tab in VS Code). It is not a real
-// file — CodeEditor special-cases this id and renders <RoadmapTab /> instead
-// of the Monaco editor. It can never be closed by the user.
+
 export const ROADMAP_TAB_ID = '__roadmap__'
 
 interface StudioState {

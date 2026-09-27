@@ -98,7 +98,7 @@ export default function DashboardPage() {
           <CurrentProjectCard project={data.active_project} onOpen={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
           <HackathonsCard onOpen={() => router.push('/discover/hackathons')} />
           {/*<GroomingLabCard onOpen={() => router.push('/grooming')} />*/}
-          <DiscoveryHubCard onOpen={() => router.push('/discover')} />
+          {/* <DiscoveryHubCard onOpen={() => router.push('/discover')} /> */}
         </section>
       </main>
     </div>
@@ -257,30 +257,30 @@ function HackathonsCard({ onOpen }: { onOpen: () => void }) {
 //   )
 // }
 
-function DiscoveryHubCard({ onOpen }: { onOpen: () => void }) {
-  const items = [
-    { title: 'Internet internships', detail: 'Role-matched jobs from backend search', mark: 'JOB' },
-    { title: 'Upcoming hackathons', detail: 'Live events from public hackathon feeds', mark: 'HCK' },
-    { title: 'Fresh refresh', detail: 'Pull latest source data when needed', mark: 'API' },
-  ]
+// function DiscoveryHubCard({ onOpen }: { onOpen: () => void }) {
+//   const items = [
+//     { title: 'Internet internships', detail: 'Role-matched jobs from backend search', mark: 'JOB' },
+//     { title: 'Upcoming hackathons', detail: 'Live events from public hackathon feeds', mark: 'HCK' },
+//     { title: 'Fresh refresh', detail: 'Pull latest source data when needed', mark: 'API' },
+//   ]
 
-  return (
-    <DashboardCard style={{ gridColumn: 'span 2' }}>
-      <CardHeader title="Discovery Hub" action="Open →" onAction={onOpen} />
-      <div style={{ display: 'grid', gap: 10 }}>
-        {items.map((item) => (
-          <button key={item.title} onClick={onOpen} style={labRowStyle}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 820 }}>{item.title}</div>
-              <div style={{ fontSize: 11, color: palette.mutedInk, marginTop: 2 }}>{item.detail}</div>
-            </div>
-            <span style={{ color: '#9B6ED6', fontSize: 11, fontWeight: 900 }}>{item.mark}</span>
-          </button>
-        ))}
-      </div>
-    </DashboardCard>
-  )
-}
+//   return (
+//     <DashboardCard style={{ gridColumn: 'span 2' }}>
+//       <CardHeader title="Discovery Hub" action="Open →" onAction={onOpen} />
+//       <div style={{ display: 'grid', gap: 10 }}>
+//         {items.map((item) => (
+//           <button key={item.title} onClick={onOpen} style={labRowStyle}>
+//             <div>
+//               <div style={{ fontSize: 13, fontWeight: 820 }}>{item.title}</div>
+//               <div style={{ fontSize: 11, color: palette.mutedInk, marginTop: 2 }}>{item.detail}</div>
+//             </div>
+//             <span style={{ color: '#9B6ED6', fontSize: 11, fontWeight: 900 }}>{item.mark}</span>
+//           </button>
+//         ))}
+//       </div>
+//     </DashboardCard>
+//   )
+// }
 
 function EmptyBlock({ title, text, action, onAction }: { title: string; text: string; action: string; onAction: () => void }) {
   return (
