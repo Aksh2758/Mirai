@@ -9,41 +9,48 @@ import type { DashboardSummary } from '@/lib/types'
 import Sidebar from '@/components/dashboard/Sidebar'
 import Topbar from '@/components/dashboard/Topbar'
 
-const palette = {
-  ink: '#0D0D0D',
-  mutedInk: '#6F6B64',
-  paper: '#F5F1EA',
-  card: '#FFFDF9',
-  line: '#E1DDD4',
-  soft: '#EEEAE2',
-  green: '#197247',
-  greenSoft: '#DFF1E8',
-  amber: '#D99A22',
+/* ─── palette ─────────────────────────────────────────────── */
+const c = {
+  bg:         '#F3F7F4',
+  ink:        '#0D1B14',
+  muted:      '#5C6B63',
+  card:       '#FFFFFF',
+  line:       '#E3EAE5',
+  soft:       '#EAF3EE',
+  green:      '#1A9D5A',
+  greenBright:'#2FBF71',
+  heroStart:  '#0B2219',
+  heroEnd:    '#0E3328',
+  accent:     '#52D273',
 }
 
+type Job     = DashboardSummary['top_internships'][number]
+
+/* ─── helpers ─────────────────────────────────────────────── */
+function getInitials(name: string, email: string) {
+  const src   = name || email || 'AK'
+  const parts = src.replace(/[^a-zA-Z\s]/g, ' ').trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+  return src.slice(0, 2).toUpperCase()
+}
+
+/* ─── page ────────────────────────────────────────────────── */
 export default function DashboardPage() {
-  const router = useRouter()
-  const [data, setData] = useState<DashboardSummary | null>(null)
+  const router  = useRouter()
+  const [data, setData]       = useState<DashboardSummary | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error,   setError]   = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-
       try {
         const summary = await fetchDashboardSummary()
-
-        if (!summary.scanner_completed) {
-          router.push('/scanner')
-          return
-        }
-
+        if (!summary.scanner_completed) { router.push('/scanner'); return }
         setData(summary)
       } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : 'Unknown dashboard error'
-        setError(message)
+        setError(e instanceof Error ? e.message : 'Unknown error')
       } finally {
         setLoading(false)
       }
@@ -51,458 +58,488 @@ export default function DashboardPage() {
     load()
   }, [router])
 
-  if (loading) {
-    return <CenteredState text="Loading your dashboard..." />
-  }
+  if (loading) return <Centered text="Loading your dashboard…" />
+  if (error)   return <Centered text={`Could not load: ${error}`} action={<button onClick={() => window.location.reload()} style={retryBtn}>Retry</button>} />
+  if (!data)   return null
 
-  if (error) {
-    return (
-      <CenteredState
-        text={`Could not load dashboard: ${error}`}
-        action={<button onClick={() => window.location.reload()} style={retryButtonStyle}>Retry</button>}
-      />
-    )
-  }
+  const displayName = data.user.full_name || data.user.email?.split('@')[0] || 'there'
+  const initials    = getInitials(displayName, data.user.email)
+  const project     = data.active_project
+  const jobs: Job[] = data.top_internships || []
+  const pct         = project ? Math.min(project.progress_pct, 100) : 0
+  const stack       = project?.tech_stack || []
+  const todo        = project?.current_step_todo?.slice(0, 3) || []
+  const focus       = todo.length ? todo : ['Review your roadmap step', 'Continue building in Studio', 'Run a final PSI check']
+  const goStudio    = () => router.push(project ? `/studio/${project.id}` : '/scanner')
 
-  if (!data) return null
-
-  const displayName = data.user.full_name
-    || data.user.email?.split('@')[0]
-    || 'there'
-  const initials = getInitials(displayName, data.user.email)
+  // skill scores for career readiness sidebar
+  const skillEntries = Object.values(data.user.skill_scores || {})
+  const topSkills    = skillEntries.map(s => s.label).slice(0, 6)
+  const avgScore     = skillEntries.length
+    ? Math.round(skillEntries.reduce((a, b) => a + b.score, 0) / skillEntries.length)
+    : pct
 
   return (
-    <div style={{ minHeight: '100vh', background: palette.paper, color: palette.ink, fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
-      <Sidebar role={data.user.role} />
+    <div style={{ minHeight: '100vh', background: c.bg, color: c.ink, fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif" }}>
+      <Sidebar role={data.user.role ?? undefined} name={displayName} initials={initials} />
 
-      <main style={mainStyle}>
-        <Topbar 
-          onDeployClick={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} 
-          hasActiveProject={!!data.active_project} 
-          xp={data.user.xp} 
-          initials={initials} 
-        />
+      <main style={{ marginLeft: 224, padding: '28px 32px 60px' }}>
+        <Topbar displayName={displayName} xp={data.user.xp} initials={initials} />
 
-        <section style={{ marginBottom: 26 }}>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 950, letterSpacing: -0.9, lineHeight: 1.1 }}>
-            Welcome back, <span style={{ color: palette.green }}>{displayName}</span>
-          </h1>
-          <p style={{ margin: '8px 0 0', color: palette.mutedInk, fontSize: 13 }}>
-            Build today, connect with peers, and prepare for the next interview milestone.
-          </p>
-        </section>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 308px', gap: 22, alignItems: 'start' }}>
 
-        <section style={gridStyle}>
-          <TodoCard project={data.active_project} onEdit={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
-          <TopMatchesCard jobs={data.top_internships} onViewAll={() => router.push('/discover/internships')} />
-          <CurrentProjectCard project={data.active_project} onOpen={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
-          <HackathonsCard onOpen={() => router.push('/discover/hackathons')} />
-          {/*<GroomingLabCard onOpen={() => router.push('/grooming')} />*/}
-          {/* <DiscoveryHubCard onOpen={() => router.push('/discover')} /> */}
-        </section>
+          {/* ── LEFT ── */}
+          <div style={{ display: 'grid', gap: 18, minWidth: 0 }}>
+
+            {/* ACTIVE SPRINT HERO */}
+            <section style={heroWrap}>
+              <div style={heroBadgeRow}>
+                <span style={sprintDot} />
+                <span style={sprintLabel}>
+                  ACTIVE SPRINT{project ? ` • STEP ${project.steps_done + 1} OF ${project.steps_total}` : ''}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 28, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <h2 style={heroTitle}>{project ? project.title : 'Start your first project'}</h2>
+                  {project && (
+                    <p style={heroSub}>
+                      Step {project.steps_done + 1} of {project.steps_total}:{' '}
+                      <span style={{ color: 'rgba(255,255,255,0.7)' }}>{project.current_step_title}</span>
+                      {stack.length > 0 && (
+                        <span> with <code style={codeChip}>{stack.slice(0, 2).join(' & ')}</code></span>
+                      )}
+                    </p>
+                  )}
+
+                  <div style={{ marginTop: 20, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <button onClick={goStudio} style={heroPrimBtn}>
+                      {project ? 'Continue in Studio' : 'Start scanner'} →
+                    </button>
+                    {project && (
+                      <button onClick={() => router.push(`/studio/${project.id}`)} style={heroSecBtn}>
+                        📄 View Project Spec
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Progress mini card */}
+                <div style={heroProgressCard}>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: 600, letterSpacing: 0.4, marginBottom: 10 }}>
+                    Sprint Completion
+                  </div>
+                  <ProgressBar value={pct} track="rgba(255,255,255,0.15)" fill={c.accent} />
+                  <div style={{ marginTop: 8, fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: 700 }}>
+                    {pct}% Finished
+                  </div>
+                  {project && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
+                      {project.steps_done}/{project.steps_total} steps done
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* TODAY'S FOCUS + ACTIVE APPLICATIONS */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+              {/* Today's Focus */}
+              <Card style={{ padding: 22 }}>
+                <div style={cardHeaderRow}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {/* <span style={{ fontSize: 18 }}>📋</span> */}
+                    <span style={sectionTitle}>Today&apos;s Focus</span>
+                  </div>
+                  <span style={pillGreen}>{1} of {focus.length} Done</span>
+                </div>
+                <p style={{ fontSize: 12, color: c.muted, margin: '8px 0 16px', lineHeight: 1.5 }}>
+                  Key execution tasks for your {data.user.role || 'project'} sprint today.
+                </p>
+
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {focus.map((task, i) => (
+                    <div key={`focus-${i}`} style={focusRow}>
+                      <div style={{ ...focusCheck, ...(i === 0 ? focusCheckDone : {}) }}>
+                        {i === 0 && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 13, fontWeight: 600,
+                          color: i === 0 ? c.muted : c.ink,
+                          textDecoration: i === 0 ? 'line-through' : 'none',
+                          lineHeight: 1.3,
+                        }}>
+                          {task}
+                        </div>
+                        {project && (
+                          <div style={{ fontSize: 11, color: c.muted, marginTop: 3 }}>
+                            {project.title}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${c.line}`, paddingTop: 14 }}>
+                  <span style={{ fontSize: 11.5, color: c.muted }}>Next sprint sync in 4 hours</span>
+                  <button onClick={goStudio} style={linkBtnStyle}>+ Add Custom Task</button>
+                </div>
+              </Card>
+
+              {/* Active Applications */}
+              <Card style={{ padding: 22 }}>
+                <div style={cardHeaderRow}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {/* <span style={{ fontSize: 18 }}>💼</span> */}
+                    <span style={sectionTitle}>Active Applications</span>
+                  </div>
+                  <button onClick={() => router.push('/discover/internships')} style={linkBtnStyle}>View All</button>
+                </div>
+                <p style={{ fontSize: 12, color: c.muted, margin: '8px 0 16px', lineHeight: 1.5 }}>
+                  Roles you have bookmarked or submitted applications for.
+                </p>
+
+                {jobs.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: c.muted, fontSize: 13 }}>
+                    No active applications yet.{' '}
+                    <button onClick={() => router.push('/discover/internships')} style={linkBtnStyle}>Browse internships →</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 0 }}>
+                    {jobs.slice(0, 3).map((job, i) => (
+                      <div key={job.job_id} style={{ ...appRow, borderBottom: i < jobs.length - 1 && i < 2 ? `1px solid ${c.line}` : 'none' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>{job.title}</div>
+                          <div style={{ fontSize: 11.5, color: c.muted, marginTop: 3 }}>
+                            {job.company} · {job.is_remote ? 'Remote' : job.location}
+                          </div>
+                        </div>
+                        <span style={i === 0 ? pillReview : i === 1 ? pillApplied : pillUpcoming}>
+                          {i === 0 ? 'In Review' : i === 1 ? 'Applied' : `${job.match_pct}% Match`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ marginTop: 16, borderTop: `1px solid ${c.line}`, paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  {jobs.length > 0 && (
+                    <span style={{ fontSize: 12, color: c.ink }}>
+                      Resume Match Rate:{' '}
+                      <strong style={{ color: c.green }}>{jobs[0].match_pct}%</strong>
+                    </span>
+                  )}
+                  <button onClick={() => router.push('/discover/internships')} style={linkBtnStyle}>
+                    Manage Pipeline →
+                  </button>
+                </div>
+              </Card>
+            </div>
+
+            {/* CURATED OPPORTUNITIES */}
+            <Card style={{ padding: 22 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, letterSpacing: -0.3 }}>Curated Opportunities For You</h3>
+              </div>
+              <p style={{ margin: '0 0 18px', fontSize: 12.5, color: c.muted }}>
+                Tailored strictly to your{' '}
+                <strong style={{ color: c.ink }}>{data.user.role || 'Developer'}</strong>{' '}
+                skill profile and verified projects.
+              </p>
+
+              {/* Filter tabs */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'All', count: `(${jobs.length + (project ? 1 : 0) + 1})` },
+                  { label: 'Internships', count: `(${jobs.length})` },
+                  { label: 'Projects', count: `(${project ? 1 : 0})` },
+                  { label: 'Hackathons', count: '(1)' },
+                ].map((tab, i) => (
+                  <button
+                    key={tab.label}
+                    onClick={() => {
+                      if (tab.label === 'Internships') router.push('/discover/internships')
+                      else if (tab.label === 'Hackathons') router.push('/discover/hackathons')
+                      else if (tab.label === 'Projects') goStudio()
+                    }}
+                    style={i === 0 ? filterTabActive : filterTab}
+                  >
+                    {tab.label} <span style={{ opacity: 0.65, fontSize: 11 }}>{tab.count}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 14 }}>
+                {/* Internship cards */}
+                {jobs.slice(0, 2).map((job) => (
+                  <OpCard
+                    key={job.job_id}
+                    kind="INTERNSHIP"
+                    pct={job.match_pct}
+                    title={job.title}
+                    sub={`${job.company} · ${job.is_remote ? 'Remote' : job.location}`}
+                    cta="Apply Now"
+                    onClick={() => router.push('/discover/internships')}
+                    kindColor="#1A9D5A"
+                  />
+                ))}
+                {/* Active project */}
+                {project && (
+                  <OpCard
+                    kind="PORTFOLIO PROJECT"
+                    pct={pct}
+                    title={project.title}
+                    sub={stack.slice(0, 3).join(' · ')}
+                    cta="Continue Build"
+                    onClick={goStudio}
+                    kindColor="#7C3AED"
+                  />
+                )}
+                {/* Hackathon from Discovery */}
+                <OpCard
+                  kind="HACKATHON"
+                  label="Upcoming"
+                  title="Live Hackathons"
+                  sub="See what's running in Discovery Hub"
+                  cta="Explore"
+                  onClick={() => router.push('/discover/hackathons')}
+                  kindColor="#D97706"
+                />
+              </div>
+            </Card>
+          </div>
+
+          {/* ── RIGHT SIDEBAR ── */}
+          <aside style={{ display: 'grid', gap: 16 }}>
+
+            {/* Career Readiness */}
+            <Card style={{ padding: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: c.ink, letterSpacing: 0.5 }}>CAREER READINESS</span>
+                <span style={pillActiveTrack}>Active Track</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 18 }}>
+                <Ring value={avgScore} />
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{data.user.role || 'Project Builder'}</div>
+                  <div style={{ fontSize: 12, color: c.muted, lineHeight: 1.5 }}>
+                    {skillEntries.filter(s => s.score >= 70).length} of {Math.max(skillEntries.length, 12)} core competencies acquired
+                  </div>
+                </div>
+              </div>
+
+              {topSkills.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: c.muted, marginBottom: 10 }}>Top Verified Skills</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {topSkills.map((s) => <span key={s} style={skillChip}>{s}</span>)}
+                  </div>
+                </>
+              )}
+            </Card>
+
+            {/* Streak + XP */}
+            <Card style={{ padding: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 20 }}>🔥</span>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 800 }}>Active Streak</div>
+                    <div style={{ fontSize: 11, color: c.muted }}>Keep building daily</div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: c.green }}>+{Math.min(data.user.xp, 999)} XP</div>
+                  <div style={{ fontSize: 11, color: c.muted }}>Total earned</div>
+                </div>
+              </div>
+
+              {/* Day dots */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 5, marginBottom: 14 }}>
+                {['M','T','W','T','F','S','S'].map((d, i) => (
+                  <div key={`day-${i}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <div style={{ fontSize: 10, color: c.muted, fontWeight: 600 }}>{d}</div>
+                    <div style={{
+                      width: 26, height: 26, borderRadius: '50%',
+                      background: i < 4 ? c.green : 'rgba(0,0,0,0.06)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {i < 4 ? (
+                        <span style={{ color: '#fff', fontSize: 11 }}>✓</span>
+                      ) : (
+                        <span style={{ color: c.muted, fontSize: 11 }}>·</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Upcoming deadline */}
+              <div style={deadlineNotice}>
+                <span style={{ fontSize: 16 }}>⏰</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#B45309' }}>Upcoming Deadline:</div>
+                  <div style={{ fontSize: 11.5, color: '#92400E', marginTop: 2, lineHeight: 1.4 }}>
+                    {project
+                      ? `Complete Step ${project.steps_done + 1} of ${project.title}`
+                      : 'Start your first project sprint'}
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Guiding Principle */}
+            <div style={guidingCard}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: c.accent, marginBottom: 14 }}>
+                GUIDING PRINCIPLE
+              </div>
+              <p style={{ margin: 0, fontSize: 13.5, fontWeight: 500, color: 'rgba(255,255,255,0.88)', lineHeight: 1.65 }}>
+                &ldquo;Discipline today builds the technical freedom and career opportunities you want tomorrow.&rdquo;
+              </p>
+              <div style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Nirmaan Community</span>
+                <span style={{ fontSize: 12, color: c.accent, fontWeight: 600 }}>#BuildInPublic</span>
+              </div>
+            </div>
+
+          </aside>
+        </div>
       </main>
     </div>
   )
 }
 
-function CenteredState({ text, action }: { text: string; action?: ReactNode }) {
+/* ─── small components ─────────────────────────────────────── */
+
+function Centered({ text, action }: { text: string; action?: ReactNode }) {
   return (
-    <div style={{ minHeight: '100vh', background: palette.ink, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100vh', background: '#0B0B0B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
-        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 14, marginBottom: action ? 16 : 0 }}>{text}</p>
+        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, marginBottom: action ? 16 : 0 }}>{text}</p>
         {action}
       </div>
     </div>
   )
 }
 
-function XpScore({ xp }: { xp: number }) {
+function Card({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
-    <div style={{ background: palette.ink, color: '#fff', borderRadius: 9, padding: '6px 16px 7px', minWidth: 80, textAlign: 'center', boxShadow: '0 10px 22px rgba(13,13,13,0.18)' }}>
-      <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.42)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 1 }}>XP Score</div>
-      <div style={{ fontSize: 18, fontWeight: 950, letterSpacing: 0.5, lineHeight: 1 }}>{xp.toLocaleString()}</div>
+    <div style={{ background: c.card, border: `1px solid ${c.line}`, borderRadius: 16, boxShadow: '0 1px 4px rgba(13,27,20,0.05)', ...style }}>
+      {children}
     </div>
   )
 }
 
-function DashboardCard({ children, style }: { children: ReactNode; style?: CSSProperties }) {
-  return <div style={{ ...cardStyle, ...style }}>{children}</div>
-}
-
-function CardHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+function ProgressBar({ value, track, fill }: { value: number; track: string; fill: string }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 13 }}>
-      <h2 style={cardTitleStyle}>{title}</h2>
-      {action && <button onClick={onAction} style={textActionStyle}>{action}</button>}
+    <div style={{ height: 6, background: track, borderRadius: 999, overflow: 'hidden' }}>
+      <div style={{ width: `${value}%`, height: '100%', background: fill, borderRadius: 999, transition: 'width 0.6s ease' }} />
     </div>
   )
 }
 
-function TodoCard({ project, onEdit }: { project: DashboardSummary['active_project']; onEdit: () => void }) {
-  const tasks = project?.current_step_todo?.slice(0, 4) || []
-  const fallbackTasks = ['Review the current roadmap step', 'Open Studio and continue building', 'Run PSI check before deployment']
-  const visibleTasks = tasks.length > 0 ? tasks : fallbackTasks
-
+function Ring({ value }: { value: number }) {
+  const r = 34, circ = 2 * Math.PI * r
   return (
-    <DashboardCard>
-      <CardHeader title="To Do" action="Edit" onAction={onEdit} />
-      <div>
-        {visibleTasks.map((task, index) => {
-          const checked = index === 0 && Boolean(project)
-          return (
-            <div key={`${task}-${index}`} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: index < visibleTasks.length - 1 ? `1px solid ${palette.soft}` : 'none' }}>
-              <span style={{ ...checkboxStyle, ...(checked ? checkboxDoneStyle : {}) }}>{checked ? '' : null}</span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, color: checked ? palette.mutedInk : palette.ink, textDecoration: checked ? 'line-through' : 'none', lineHeight: 1.25 }}>{task}</div>
-                <div style={{ fontSize: 10.5, color: checked ? palette.mutedInk : palette.green, fontWeight: index === 1 ? 700 : 500, marginTop: 2 }}>
-                  {index === 1 ? 'Due today' : project?.current_step_title || 'Project workflow'}
-                </div>
-              </div>
-            </div>
-          )
-        })}
+    <div style={{ position: 'relative', width: 84, height: 84, flexShrink: 0 }}>
+      <svg width="84" height="84" viewBox="0 0 84 84" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="42" cy="42" r={r} fill="none" stroke={c.soft} strokeWidth="8" />
+        <circle cx="42" cy="42" r={r} fill="none" stroke={c.green} strokeWidth="8" strokeLinecap="round"
+          strokeDasharray={circ} strokeDashoffset={circ * (1 - value / 100)} />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ fontSize: 18, fontWeight: 800 }}>{value}%</div>
       </div>
-    </DashboardCard>
-  )
-}
-
-function TopMatchesCard({ jobs, onViewAll }: { jobs: DashboardSummary['top_internships']; onViewAll: () => void }) {
-  const visibleJobs = jobs.slice(0, 3)
-  return (
-    <DashboardCard>
-      <CardHeader title="Top Matches" action="See All →" onAction={onViewAll} />
-      {visibleJobs.length === 0 ? (
-        <EmptyBlock title="No matches yet" text="Open Internships to fetch internet opportunities." action="Open Discovery Hub" onAction={onViewAll} />
-      ) : (
-        <div>
-          {visibleJobs.map((job, index) => (
-            <div key={job.job_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: index < visibleJobs.length - 1 ? `1px solid ${palette.soft}` : 'none' }}>
-              <div style={matchIconStyle}>{job.company.slice(0, 1).toUpperCase()}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{job.title}</div>
-                <div style={{ fontSize: 10.5, color: palette.mutedInk, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{job.is_remote ? 'Remote' : job.location} · {job.company}</div>
-              </div>
-              <span style={matchBadgeStyle}>{job.match_pct}%</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </DashboardCard>
-  )
-}
-
-function CurrentProjectCard({ project, onOpen }: { project: DashboardSummary['active_project']; onOpen: () => void }) {
-  if (!project) {
-    return (
-      <DashboardCard>
-        <CardHeader title="Current Project" />
-        <EmptyBlock title="No project active" text="Run the scanner to receive your first build path." action="Start scanner" onAction={onOpen} />
-      </DashboardCard>
-    )
-  }
-
-  const stackLabel = project.tech_stack[0] || 'Project'
-  return (
-    <DashboardCard>
-      <CardHeader title="Current Project" />
-      <span style={stackPillStyle}>{stackLabel}</span>
-      <h3 style={{ margin: '13px 0 5px', fontSize: 19, letterSpacing: -0.45, lineHeight: 1.15 }}>{project.title}</h3>
-      <p style={{ margin: 0, color: palette.mutedInk, fontSize: 12, lineHeight: 1.45 }}>
-        {project.tech_stack.slice(0, 4).join(' + ') || 'Guided project'} learning path with mentor support.
-      </p>
-      <div style={{ height: 5, background: palette.soft, borderRadius: 999, overflow: 'hidden', marginTop: 18 }}>
-        <div style={{ width: `${Math.min(project.progress_pct, 100)}%`, height: '100%', background: palette.green, borderRadius: 999 }} />
-      </div>
-      <div style={{ marginTop: 8, color: palette.mutedInk, fontSize: 11 }}>Step {project.steps_done} of {project.steps_total} · {project.progress_pct}% complete</div>
-      <button onClick={onOpen} style={primaryButtonStyle}>Open in Studio →</button>
-    </DashboardCard>
-  )
-}
-
-function HackathonsCard({ onOpen }: { onOpen: () => void }) {
-  return (
-    <DashboardCard style={{ gridColumn: 'span 2' }}>
-      <CardHeader title="Hackathons" action="Open Hackathons →" onAction={onOpen} />
-      <button onClick={onOpen} style={eventCardStyle}>
-        <div style={{ color: 'rgba(255,255,255,0.34)', textTransform: 'uppercase', letterSpacing: 1.25, fontSize: 9 }}>Internet Discovery</div>
-        <div style={{ color: '#fff', fontWeight: 850, marginTop: 6, fontSize: 15 }}>Live hackathons from Discovery Hub</div>
-        <div style={{ color: 'rgba(255,255,255,0.45)', marginTop: 4, fontSize: 11 }}>Fetch upcoming competitions and internships through backend-powered sources.</div>
-      </button>
-    </DashboardCard>
-  )
-}
-
-// function GroomingLabCard({ onOpen }: { onOpen: () => void }) {
-//   const labs = [
-//     { title: 'Resume Builder', detail: 'Backend-generated project bullets', mark: 'CV' },
-//     { title: 'Mock Interview', detail: 'Personalized prep path from API', mark: 'MI' },
-//     { title: 'Aptitude Prep', detail: 'Quant, logic, and verbal plan', mark: 'AP' },
-//   ]
-
-//   return (
-//     <DashboardCard style={{ gridColumn: 'span 2' }}>
-//       <CardHeader title="Grooming Lab" action="Open →" onAction={onOpen} />
-//       <div style={{ display: 'grid', gap: 10 }}>
-//         {labs.map((lab) => (
-//           <button key={lab.title} onClick={onOpen} style={labRowStyle}>
-//             <div>
-//               <div style={{ fontSize: 13, fontWeight: 820 }}>{lab.title}</div>
-//               <div style={{ fontSize: 11, color: palette.mutedInk, marginTop: 2 }}>{lab.detail}</div>
-//             </div>
-//             <span style={{ color: '#9B6ED6', fontSize: 11, fontWeight: 900 }}>{lab.mark}</span>
-//           </button>
-//         ))}
-//       </div>
-//     </DashboardCard>
-//   )
-// }
-
-// function DiscoveryHubCard({ onOpen }: { onOpen: () => void }) {
-//   const items = [
-//     { title: 'Internet internships', detail: 'Role-matched jobs from backend search', mark: 'JOB' },
-//     { title: 'Upcoming hackathons', detail: 'Live events from public hackathon feeds', mark: 'HCK' },
-//     { title: 'Fresh refresh', detail: 'Pull latest source data when needed', mark: 'API' },
-//   ]
-
-//   return (
-//     <DashboardCard style={{ gridColumn: 'span 2' }}>
-//       <CardHeader title="Discovery Hub" action="Open →" onAction={onOpen} />
-//       <div style={{ display: 'grid', gap: 10 }}>
-//         {items.map((item) => (
-//           <button key={item.title} onClick={onOpen} style={labRowStyle}>
-//             <div>
-//               <div style={{ fontSize: 13, fontWeight: 820 }}>{item.title}</div>
-//               <div style={{ fontSize: 11, color: palette.mutedInk, marginTop: 2 }}>{item.detail}</div>
-//             </div>
-//             <span style={{ color: '#9B6ED6', fontSize: 11, fontWeight: 900 }}>{item.mark}</span>
-//           </button>
-//         ))}
-//       </div>
-//     </DashboardCard>
-//   )
-// }
-
-function EmptyBlock({ title, text, action, onAction }: { title: string; text: string; action: string; onAction: () => void }) {
-  return (
-    <div style={{ background: palette.soft, borderRadius: 14, padding: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 850, marginBottom: 5 }}>{title}</div>
-      <p style={{ margin: 0, color: palette.mutedInk, fontSize: 12, lineHeight: 1.45 }}>{text}</p>
-      <button onClick={onAction} style={{ ...textActionStyle, marginTop: 12, padding: 0 }}>{action} →</button>
     </div>
   )
 }
 
-function getInitials(name: string, email: string) {
-  const source = name || email || 'AK'
-  const parts = source.replace(/[^a-zA-Z\s]/g, ' ').trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
-  return source.slice(0, 2).toUpperCase()
+function OpCard({ kind, pct, label, title, sub, cta, onClick, kindColor }: {
+  kind: string; pct?: number; label?: string; title: string; sub: string
+  cta: string; onClick: () => void; kindColor: string
+}) {
+  return (
+    <div style={{ border: `1px solid ${c.line}`, borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 6, background: '#FAFCFB' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.1, color: kindColor }}>{kind}</span>
+        <span style={{ fontSize: 13, fontWeight: 800, color: kindColor }}>
+          {pct !== undefined ? `${pct}%` : (label || '')}
+          {pct !== undefined && <span style={{ fontSize: 10, fontWeight: 500, color: c.muted }}>{' '}Match</span>}
+        </span>
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3, color: c.ink }}>{title}</div>
+      <div style={{ fontSize: 12, color: c.muted, lineHeight: 1.4, flex: 1 }}>{sub}</div>
+      <button onClick={onClick} style={opCardBtn}>{cta} →</button>
+    </div>
+  )
 }
 
-const sidebarStyle: CSSProperties = {
-  position: 'fixed',
-  left: 0,
-  top: 0,
-  bottom: 0,
-  width: 198,
-  background: '#101010',
-  display: 'flex',
-  flexDirection: 'column',
-  boxShadow: '18px 0 36px rgba(13,13,13,0.08)',
-  zIndex: 10,
-}
+/* ─── styles ───────────────────────────────────────────────── */
 
-const sidebarLinkStyle: CSSProperties = {
-  height: 38,
-  padding: '0 15px',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  color: 'rgba(255,255,255,0.38)',
-  textDecoration: 'none',
-  fontSize: 12,
-  borderRight: '3px solid transparent',
+const heroWrap: CSSProperties = {
+  background: `linear-gradient(135deg, ${c.heroStart} 0%, ${c.heroEnd} 100%)`,
+  borderRadius: 18, padding: '26px 30px', position: 'relative', overflow: 'hidden',
 }
+const heroBadgeRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }
+const sprintDot: CSSProperties   = { width: 8, height: 8, borderRadius: '50%', background: c.accent, boxShadow: `0 0 6px ${c.accent}` }
+const sprintLabel: CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase' }
+const heroTitle: CSSProperties   = { margin: 0, fontSize: 28, fontWeight: 900, color: '#fff', letterSpacing: -0.6, lineHeight: 1.15 }
+const heroSub: CSSProperties     = { margin: '10px 0 0', fontSize: 13.5, color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }
+const codeChip: CSSProperties    = { background: 'rgba(255,255,255,0.12)', color: c.accent, padding: '2px 7px', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }
+const heroPrimBtn: CSSProperties = {
+  background: c.accent, color: '#041A0C', border: 'none', borderRadius: 999,
+  padding: '11px 22px', fontSize: 13.5, fontWeight: 800, cursor: 'pointer',
+}
+const heroSecBtn: CSSProperties  = {
+  background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.85)',
+  border: '1px solid rgba(255,255,255,0.15)', borderRadius: 999,
+  padding: '11px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+}
+const heroProgressCard: CSSProperties = {
+  width: 200, flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.04)',
+}
+const cardHeaderRow: CSSProperties  = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+const sectionTitle: CSSProperties   = { fontSize: 16, fontWeight: 800, letterSpacing: -0.2 }
+const pillGreen: CSSProperties      = { background: '#DCFCE7', color: '#166534', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999 }
+const pillActiveTrack: CSSProperties= { background: '#D1FAE5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999 }
+const pillReview: CSSProperties     = { background: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' as const }
+const pillApplied: CSSProperties    = { background: '#DBEAFE', color: '#1E40AF', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' as const }
+const pillUpcoming: CSSProperties   = { background: '#F3E8FF', color: '#6B21A8', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' as const }
 
-const sidebarLinkActiveStyle: CSSProperties = {
-  background: 'rgba(255,255,255,0.07)',
-  color: '#fff',
-  borderRightColor: '#54D37A',
+const focusRow: CSSProperties       = { display: 'flex', gap: 12, alignItems: 'flex-start' }
+const focusCheck: CSSProperties     = {
+  width: 18, height: 18, borderRadius: 5, border: `1.8px solid ${c.green}`,
+  flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff',
 }
+const focusCheckDone: CSSProperties = { background: c.green, borderColor: c.green }
 
-const mainStyle: CSSProperties = {
-  marginLeft: 198,
-  minHeight: '100vh',
-  padding: '30px 28px 34px',
-  maxWidth: 1030,
-}
+const appRow: CSSProperties         = { display: 'flex', gap: 12, alignItems: 'center', padding: '10px 0' }
+const linkBtnStyle: CSSProperties   = { background: 'transparent', border: 'none', color: c.green, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }
 
-const topActionBarStyle: CSSProperties = {
-  position: 'fixed',
-  top: 0,
-  right: 28,
-  height: 58,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 14,
-  zIndex: 8,
+const filterTab: CSSProperties      = {
+  background: '#F3F7F4', border: `1px solid ${c.line}`, borderRadius: 999,
+  padding: '6px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', color: c.muted,
 }
-
-const deployButtonStyle: CSSProperties = {
-  background: palette.ink,
-  color: '#fff',
-  border: 'none',
-  borderRadius: '0 0 10px 10px',
-  minWidth: 204,
-  height: 42,
-  padding: '0 18px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  fontSize: 13,
-  fontWeight: 800,
-  cursor: 'pointer',
+const filterTabActive: CSSProperties= {
+  ...filterTab, background: c.green, color: '#fff', border: `1px solid ${c.green}`,
 }
-
-const avatarStyle: CSSProperties = {
-  width: 34,
-  height: 34,
-  borderRadius: 9,
-  background: palette.greenSoft,
-  color: palette.green,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: 12,
-  fontWeight: 900,
+const skillChip: CSSProperties      = { background: c.soft, color: '#2B5A43', fontSize: 11.5, padding: '4px 11px', borderRadius: 999, fontWeight: 600 }
+const opCardBtn: CSSProperties      = {
+  marginTop: 6, background: c.ink, color: '#fff', border: 'none',
+  borderRadius: 8, padding: '9px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', textAlign: 'center' as const,
 }
-
-const gridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-  gap: 14,
+const deadlineNotice: CSSProperties = {
+  background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10,
+  padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start',
 }
-
-const cardStyle: CSSProperties = {
-  background: palette.card,
-  border: `1px solid ${palette.line}`,
-  borderRadius: 11,
-  padding: '15px 16px',
-  boxShadow: '0 1px 0 rgba(13,13,13,0.02)',
-  gridColumn: 'span 2',
+const guidingCard: CSSProperties    = {
+  background: `linear-gradient(135deg, ${c.heroStart} 0%, #1A3D2E 100%)`,
+  borderRadius: 16, padding: 22,
 }
-
-const cardTitleStyle: CSSProperties = {
-  margin: 0,
-  textTransform: 'uppercase',
-  letterSpacing: 1.65,
-  color: '#5D5952',
-  fontSize: 11,
-  fontWeight: 850,
-}
-
-const textActionStyle: CSSProperties = {
-  border: 'none',
-  background: 'transparent',
-  color: palette.green,
-  fontSize: 10.5,
-  fontWeight: 800,
-  textDecoration: 'underline',
-  cursor: 'pointer',
-}
-
-const checkboxStyle: CSSProperties = {
-  width: 14,
-  height: 14,
-  borderRadius: 4,
-  border: `1.4px solid ${palette.green}`,
-  flexShrink: 0,
-  marginTop: 1,
-  background: '#fff',
-}
-
-const checkboxDoneStyle: CSSProperties = {
-  background: palette.green,
-  borderColor: palette.green,
-}
-
-const matchIconStyle: CSSProperties = {
-  width: 30,
-  height: 30,
-  borderRadius: 9,
-  background: palette.soft,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: palette.green,
-  fontWeight: 900,
-  fontSize: 12,
-  flexShrink: 0,
-}
-
-const matchBadgeStyle: CSSProperties = {
-  background: palette.greenSoft,
-  color: palette.green,
-  fontSize: 10,
-  fontWeight: 900,
-  padding: '3px 8px',
-  borderRadius: 999,
-  flexShrink: 0,
-}
-
-const stackPillStyle: CSSProperties = {
-  display: 'block',
-  width: '100%',
-  background: palette.greenSoft,
-  color: palette.green,
-  borderRadius: 999,
-  padding: '4px 10px',
-  fontSize: 9.5,
-  fontWeight: 950,
-  textTransform: 'uppercase',
-}
-
-const primaryButtonStyle: CSSProperties = {
-  width: '100%',
-  marginTop: 18,
-  background: palette.ink,
-  color: '#fff',
-  border: 'none',
-  borderRadius: 8,
-  padding: '10px 12px',
-  fontSize: 13,
-  fontWeight: 850,
-  cursor: 'pointer',
-}
-
-const eventCardStyle: CSSProperties = {
-  width: '100%',
-  background: palette.ink,
-  border: 'none',
-  borderRadius: 8,
-  padding: '14px 14px',
-  textAlign: 'left',
-  cursor: 'pointer',
-}
-
-const labRowStyle: CSSProperties = {
-  width: '100%',
-  background: palette.soft,
-  border: 'none',
-  borderRadius: 8,
-  padding: '13px 14px',
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  textAlign: 'left',
-  cursor: 'pointer',
-}
-
-const retryButtonStyle: CSSProperties = {
-  background: '#fff',
-  border: 'none',
-  borderRadius: 8,
-  padding: '8px 20px',
-  fontSize: 13,
-  cursor: 'pointer',
-}
+const retryBtn: CSSProperties       = { background: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, cursor: 'pointer' }

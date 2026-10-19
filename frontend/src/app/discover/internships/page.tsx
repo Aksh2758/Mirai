@@ -4,7 +4,8 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
-import { fetchJobs } from '@/lib/api'
+import { fetchJobs, fetchDashboardSummary } from '@/lib/api'
+import Sidebar from '@/components/dashboard/Sidebar'
 import type { InternshipWorkType, JobListing, JobsResponse } from '@/lib/types'
 
 type WorkFilter = 'all' | InternshipWorkType
@@ -13,11 +14,19 @@ type StackFilter = 'all' | 'profile' | 'gaps'
 type DurationFilter = 'all' | 'short' | 'medium' | 'long'
 type SortMode = 'match' | 'stipend' | 'recent'
 
+function getInitials(name: string, email: string) {
+  const src = name || email || 'AK'
+  const parts = src.replace(/[^a-zA-Z\s]/g, ' ').trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+  return src.slice(0, 2).toUpperCase()
+}
+
 export default function InternshipsPage() {
   const router = useRouter()
   const [data, setData] = useState<JobsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [userProfile, setUserProfile] = useState<{ role?: string; name?: string; initials?: string }>({})
   const [workFilter, setWorkFilter] = useState<WorkFilter>('all')
   const [locationFilter, setLocationFilter] = useState<LocationFilter>('all')
   const [stackFilter, setStackFilter] = useState<StackFilter>('all')
@@ -38,6 +47,23 @@ export default function InternshipsPage() {
         router.push('/login')
         return
       }
+
+      const fallbackName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || ''
+      setUserProfile({
+        name: fallbackName,
+        initials: getInitials(fallbackName, session.user.email || ''),
+      })
+
+      fetchDashboardSummary().then((summary) => {
+        if (!cancelled && summary?.user) {
+          const name = summary.user.full_name || summary.user.email?.split('@')[0] || fallbackName
+          setUserProfile({
+            role: summary.user.role ?? undefined,
+            name,
+            initials: getInitials(name, summary.user.email || ''),
+          })
+        }
+      }).catch(() => {})
 
       try {
         const result = await fetchJobs()
@@ -83,103 +109,134 @@ export default function InternshipsPage() {
 
   if (loading) {
     return (
-      <main style={pageStyle}>
-        <div style={loadingStyle}>Finding internships from JSearch and matching them to your Skill DNA...</div>
-      </main>
+      <div style={{ minHeight: '100vh', background: '#F4EFE6' }}>
+        <Sidebar role={userProfile.role} name={userProfile.name} initials={userProfile.initials} />
+        <main style={{ marginLeft: 224, ...pageStyle }}>
+          <div style={loadingStyle}>Finding internships from JSearch and matching them to your Skill DNA...</div>
+        </main>
+      </div>
     )
   }
 
   return (
-    <main style={pageStyle}>
+    <div style={{ minHeight: '100vh', background: '#F4EFE6' }}>
+      <Sidebar role={userProfile.role || data?.role_searched || undefined} name={userProfile.name} initials={userProfile.initials} />
+      <main style={{ marginLeft: 224, ...pageStyle }}>
+        {/* ── HERO ── */}
       <section style={heroStyle}>
-        <div>
-          <button onClick={() => router.push('/dashboard')} style={backButtonStyle}>Dashboard</button>
-          <div style={eyebrowStyle}>Nirmaan Internships</div>
-          <h1 style={titleStyle}>Internships matched to your resume, project and Skill DNA.</h1>
-          <p style={leadStyle}>Backend reads your stored profile role, skill scores and active project stack, fetches JSearch/RapidAPI listings, and returns a match percentage with reasons.</p>
-          <div style={quickPillsStyle}>
-            <span style={darkPillStyle}>{data?.role_searched || 'Scanner role pending'}</span>
-            <span style={lightPillStyle}>{cacheLabel}</span>
-            <span style={lightPillStyle}>{data?.total || 0} opportunities</span>
+        <button onClick={() => router.push('/dashboard')} style={backButtonStyle}>← Dashboard</button>
+        <div style={eyebrowStyle}>Nirmaan · Internships</div>
+        <h1 style={titleStyle}>Find internships that fit where you are — and where you&apos;re headed.</h1>
+        <p style={leadStyle}>
+          Every listing is scored against your skills, target role, and active project so you spend time on roles you can actually land — not ones that are out of reach.
+        </p>
+
+        {/* Inline stat strip — replaces the floating black card */}
+        <div style={statStripStyle}>
+          <div style={statItemStyle}>
+            <span style={statValueStyle}>{topMatch ? `${topMatch.match_pct}%` : '—'}</span>
+            <span style={statLabelStyle}>Best match</span>
           </div>
-        </div>
-        <div style={heroPanelStyle}>
-          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: 900, letterSpacing: 1.2, textTransform: 'uppercase' }}>Best Match</span>
-          <strong style={{ display: 'block', fontSize: 48, marginTop: 8, letterSpacing: -1.6 }}>{topMatch ? `${topMatch.match_pct}%` : '--'}</strong>
-          <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,0.66)', fontSize: 13, lineHeight: 1.5 }}>{topMatch ? `${topMatch.title} at ${topMatch.company}` : 'Complete scanner to unlock personalized matches.'}</p>
+          <div style={statDivider} />
+          <div style={statItemStyle}>
+            <span style={statValueStyle}>{data?.total || 0}</span>
+            <span style={statLabelStyle}>Opportunities</span>
+          </div>
+          <div style={statDivider} />
+          <div style={statItemStyle}>
+            <span style={statValueStyle}>{data?.role_searched || '—'}</span>
+            <span style={statLabelStyle}>Your target role</span>
+          </div>
+          <div style={statDivider} />
+          <div style={statItemStyle}>
+            <span style={statValueStyle}>{data?.cached ? `${data.cache_age_hours}h` : 'Live'}</span>
+            <span style={statLabelStyle}>{data?.cached ? 'Cached' : 'Fresh data'}</span>
+          </div>
+          {topMatch && (
+            <>
+              <div style={statDivider} />
+              <div style={{ ...statItemStyle, flex: 2, minWidth: 0 }}>
+                <span style={{ ...statValueStyle, fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {topMatch.title}
+                </span>
+                <span style={statLabelStyle}>{topMatch.company}</span>
+              </div>
+            </>
+          )}
         </div>
       </section>
 
       {error && <div style={alertStyle}>{error}</div>}
       {data && !data.role_searched && (
-        <div style={warningStyle}>Complete the scanner first so the backend can match internships with your role, level and skills.</div>
+        <div style={warningStyle}>Complete the scanner first so we can match internships to your role, level, and skills.</div>
       )}
 
-      <section style={layoutStyle}>
-        <aside style={filterPanelStyle}>
-          <div style={panelHeaderStyle}>
-            <span style={eyebrowStyle}>Filters</span>
-            <button onClick={() => resetFilters(setWorkFilter, setLocationFilter, setStackFilter, setDurationFilter, setMinMatch, setMinStipend, setSortMode)} style={resetButtonStyle}>Reset</button>
+      {/* ── COMPACT FILTER BAR ── */}
+      <div style={filterBarStyle}>
+        <div style={filterRowStyle}>
+          <span style={filterGroupLabel}>Work type</span>
+          {(['all', 'remote', 'hybrid', 'onsite'] as const).map((value) => (
+            <ChipButton key={value} active={workFilter === value} onClick={() => setWorkFilter(value)} label={workLabel(value)} />
+          ))}
+          <div style={filterDivider} />
+          <span style={filterGroupLabel}>Location</span>
+          {(['all', 'remote', 'india', 'bangalore', 'mumbai', 'delhi'] as const).map((value) => (
+            <ChipButton key={value} active={locationFilter === value} onClick={() => setLocationFilter(value)} label={locationLabel(value)} />
+          ))}
+          <div style={filterDivider} />
+          <span style={filterGroupLabel}>Stack</span>
+          <ChipButton active={stackFilter === 'all'} onClick={() => setStackFilter('all')} label="All" />
+          <ChipButton active={stackFilter === 'profile'} onClick={() => setStackFilter('profile')} label="My stack" />
+          <ChipButton active={stackFilter === 'gaps'} onClick={() => setStackFilter('gaps')} label="Has gaps" />
+          <div style={filterDivider} />
+          <span style={filterGroupLabel}>Duration</span>
+          <ChipButton active={durationFilter === 'all'} onClick={() => setDurationFilter('all')} label="Any" />
+          <ChipButton active={durationFilter === 'short'} onClick={() => setDurationFilter('short')} label="1–2 mo" />
+          <ChipButton active={durationFilter === 'medium'} onClick={() => setDurationFilter('medium')} label="3–6 mo" />
+          <ChipButton active={durationFilter === 'long'} onClick={() => setDurationFilter('long')} label="6+ mo" />
+        </div>
+
+        <div style={filterRowStyle}>
+          <span style={filterGroupLabel}>Min match</span>
+          <input type="range" min={0} max={90} step={5} value={minMatch} onChange={(e) => setMinMatch(Number(e.target.value))} style={rangeStyle} />
+          <span style={rangeValueBadge}>{minMatch}%</span>
+          <div style={filterDivider} />
+          <span style={filterGroupLabel}>Min stipend</span>
+          <input type="range" min={0} max={50000} step={5000} value={minStipend} onChange={(e) => setMinStipend(Number(e.target.value))} style={rangeStyle} />
+          <span style={rangeValueBadge}>{minStipend === 0 ? 'Any' : formatMoney(minStipend)}</span>
+          <div style={filterDivider} />
+          <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={selectStyle}>
+            <option value="match">Best match first</option>
+            <option value="stipend">Highest stipend</option>
+            <option value="recent">Most recent</option>
+          </select>
+          <button
+            onClick={() => resetFilters(setWorkFilter, setLocationFilter, setStackFilter, setDurationFilter, setMinMatch, setMinStipend, setSortMode)}
+            style={resetButtonStyle}
+          >
+            Reset all
+          </button>
+        </div>
+      </div>
+
+      {/* ── FEED ── */}
+      <section style={feedStyle}>
+        <div style={feedHeaderStyle}>
+          <h2 style={{ margin: 0, fontSize: 22, letterSpacing: -0.6 }}>Matched internship feed</h2>
+          <p style={{ margin: 0, color: '#6F6B64', fontSize: 13 }}>Showing {filtered.length} of {data?.total || 0} listings</p>
+        </div>
+
+        {filtered.length === 0 && !error ? (
+          <div style={emptyStyle}>No internships match your current filters. Try lowering the minimum match % or expanding the location.</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 14 }}>
+            {filtered.map((job) => <JobCard key={job.job_id || job.apply_url || job.title} job={job} />)}
           </div>
-
-          <FilterGroup title="Work Type">
-            {(['all', 'remote', 'hybrid', 'onsite'] as const).map((value) => (
-              <FilterButton key={value} active={workFilter === value} onClick={() => setWorkFilter(value)} label={workLabel(value)} />
-            ))}
-          </FilterGroup>
-
-          <FilterGroup title="Location">
-            {(['all', 'remote', 'india', 'bangalore', 'mumbai', 'delhi'] as const).map((value) => (
-              <FilterButton key={value} active={locationFilter === value} onClick={() => setLocationFilter(value)} label={locationLabel(value)} />
-            ))}
-          </FilterGroup>
-
-          <FilterGroup title="Stack Match">
-            <FilterButton active={stackFilter === 'all'} onClick={() => setStackFilter('all')} label="All roles" />
-            <FilterButton active={stackFilter === 'profile'} onClick={() => setStackFilter('profile')} label="Your stack only" />
-            <FilterButton active={stackFilter === 'gaps'} onClick={() => setStackFilter('gaps')} label="Has learning gaps" />
-          </FilterGroup>
-
-          <FilterGroup title={`Minimum Match: ${minMatch}%`}>
-            <input type="range" min={0} max={90} step={5} value={minMatch} onChange={(event) => setMinMatch(Number(event.target.value))} style={rangeStyle} />
-          </FilterGroup>
-
-          <FilterGroup title={`Minimum Stipend: ${minStipend === 0 ? 'Any' : formatMoney(minStipend)}`}>
-            <input type="range" min={0} max={50000} step={5000} value={minStipend} onChange={(event) => setMinStipend(Number(event.target.value))} style={rangeStyle} />
-          </FilterGroup>
-
-          <FilterGroup title="Duration">
-            <FilterButton active={durationFilter === 'all'} onClick={() => setDurationFilter('all')} label="Any duration" />
-            <FilterButton active={durationFilter === 'short'} onClick={() => setDurationFilter('short')} label="1-2 months" />
-            <FilterButton active={durationFilter === 'medium'} onClick={() => setDurationFilter('medium')} label="3-6 months" />
-            <FilterButton active={durationFilter === 'long'} onClick={() => setDurationFilter('long')} label="6+ months" />
-          </FilterGroup>
-        </aside>
-
-        <section style={feedStyle}>
-          <div style={feedHeaderStyle}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 26, letterSpacing: -0.8 }}>Matched internship feed</h2>
-              <p style={{ margin: '5px 0 0', color: '#6F6B64', fontSize: 13 }}>Showing {filtered.length} listings after filters.</p>
-            </div>
-            <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} style={selectStyle}>
-              <option value="match">Sort by match</option>
-              <option value="stipend">Sort by stipend</option>
-              <option value="recent">Sort by newest</option>
-            </select>
-          </div>
-
-          {filtered.length === 0 && !error ? (
-            <div style={emptyStyle}>No internships match your current filters. Lower the minimum match or switch location/work type.</div>
-          ) : (
-            <div style={{ display: 'grid', gap: 14 }}>
-              {filtered.map((job) => <JobCard key={job.job_id || job.apply_url || job.title} job={job} />)}
-            </div>
-          )}
-        </section>
+        )}
       </section>
     </main>
-  )
+  </div>
+)
 }
 
 function JobCard({ job }: { job: JobListing }) {
@@ -243,17 +300,26 @@ function Metric({ label, value }: { label: string; value: string }) {
   )
 }
 
-function FilterGroup({ title, children }: { title: string; children: ReactNode }) {
+function ChipButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
-    <div style={{ marginTop: 18 }}>
-      <div style={filterTitleStyle}>{title}</div>
-      {children}
-    </div>
+    <button
+      onClick={onClick}
+      style={{
+        border: active ? '1.5px solid #141414' : '1.5px solid #E2DCD0',
+        background: active ? '#141414' : '#FFFDF8',
+        color: active ? '#fff' : '#5B554D',
+        borderRadius: 999,
+        padding: '6px 13px',
+        fontSize: 12.5,
+        fontWeight: 700,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap' as const,
+        transition: 'all 0.15s ease',
+      }}
+    >
+      {label}
+    </button>
   )
-}
-
-function FilterButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
-  return <button onClick={onClick} style={{ ...filterButtonStyle, ...(active ? activeFilterButtonStyle : {}) }}>{label}</button>
 }
 
 function getWorkType(job: JobListing): InternshipWorkType {
@@ -302,31 +368,77 @@ function resetFilters(
   setSortMode('match')
 }
 
-const pageStyle: CSSProperties = { minHeight: '100vh', background: '#F4EFE6', color: '#141414', padding: '28px clamp(16px, 4vw, 42px)', fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }
+/* ─── Page shell ─── */
+const pageStyle: CSSProperties = {
+  minHeight: '100vh', background: '#F4EFE6', color: '#141414',
+  padding: '28px clamp(16px, 4vw, 42px)',
+  fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+}
 const loadingStyle: CSSProperties = { minHeight: '80vh', display: 'grid', placeItems: 'center', color: '#6F6B64', fontSize: 14 }
-const heroStyle: CSSProperties = { maxWidth: 1240, margin: '0 auto 20px', display: 'grid', gridTemplateColumns: '1fr 330px', gap: 20, alignItems: 'stretch' }
-const backButtonStyle: CSSProperties = { border: '1px solid #E2DCD0', background: '#FFFDF8', borderRadius: 999, padding: '9px 14px', fontWeight: 900, cursor: 'pointer', marginBottom: 18 }
+
+/* ─── Hero ─── */
+const heroStyle: CSSProperties = { maxWidth: 1240, margin: '0 auto 24px' }
+const backButtonStyle: CSSProperties = {
+  border: '1px solid #E2DCD0', background: '#FFFDF8', borderRadius: 999,
+  padding: '7px 14px', fontWeight: 700, cursor: 'pointer', marginBottom: 16,
+  fontSize: 13, color: '#5B554D',
+}
 const eyebrowStyle: CSSProperties = { color: '#1E714A', fontSize: 11, fontWeight: 950, letterSpacing: 1.4, textTransform: 'uppercase' }
-const titleStyle: CSSProperties = { margin: '8px 0 10px', fontSize: 'clamp(34px, 5vw, 58px)', letterSpacing: -2.4, lineHeight: 0.96, maxWidth: 820 }
-const leadStyle: CSSProperties = { color: '#6F6B64', margin: 0, fontSize: 15, lineHeight: 1.6, maxWidth: 760 }
-const quickPillsStyle: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 9, marginTop: 18 }
-const darkPillStyle: CSSProperties = { background: '#141414', color: '#fff', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 900 }
-const lightPillStyle: CSSProperties = { background: '#FFFDF8', border: '1px solid #E2DCD0', color: '#5B554D', borderRadius: 999, padding: '8px 12px', fontSize: 12, fontWeight: 800 }
-const heroPanelStyle: CSSProperties = { background: '#141414', color: '#fff', borderRadius: 26, padding: 24, boxShadow: '0 20px 60px rgba(20,20,20,0.18)' }
+const titleStyle: CSSProperties = { margin: '8px 0 12px', fontSize: 'clamp(28px, 4vw, 48px)', letterSpacing: -1.8, lineHeight: 1.05, maxWidth: 820 }
+const leadStyle: CSSProperties = { color: '#6F6B64', margin: 0, fontSize: 15, lineHeight: 1.65, maxWidth: 680 }
+
+/* ─── Stat strip ─── */
+const statStripStyle: CSSProperties = {
+  display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0,
+  background: '#FFFDF8', border: '1px solid #E2DCD0', borderRadius: 18,
+  padding: '14px 20px', marginTop: 20,
+}
+const statItemStyle: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 2, padding: '0 20px', flex: 1 }
+const statValueStyle: CSSProperties = { fontSize: 20, fontWeight: 900, letterSpacing: -0.5, color: '#141414' }
+const statLabelStyle: CSSProperties = { fontSize: 11, color: '#6F6B64', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }
+const statDivider: CSSProperties = { width: 1, height: 36, background: '#E2DCD0', flexShrink: 0 }
+
+/* ─── Alerts ─── */
 const alertStyle: CSSProperties = { maxWidth: 1240, margin: '0 auto 14px', background: '#FDE8E1', color: '#B42318', border: '1px solid #F8C9BD', borderRadius: 14, padding: 14, fontSize: 13 }
 const warningStyle: CSSProperties = { maxWidth: 1240, margin: '0 auto 14px', background: '#FFF7D6', color: '#79570B', border: '1px solid #F2D675', borderRadius: 14, padding: 14, fontSize: 13 }
-const layoutStyle: CSSProperties = { maxWidth: 1240, margin: '0 auto', display: 'grid', gridTemplateColumns: '280px 1fr', gap: 18, alignItems: 'start' }
-const filterPanelStyle: CSSProperties = { background: '#FFFDF8', border: '1px solid #E2DCD0', borderRadius: 24, padding: 18, position: 'sticky', top: 20 }
-const panelHeaderStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
-const resetButtonStyle: CSSProperties = { border: 'none', background: '#EFE9DE', borderRadius: 999, padding: '7px 10px', fontSize: 11, fontWeight: 900, cursor: 'pointer' }
-const filterTitleStyle: CSSProperties = { color: '#6F6B64', fontSize: 11, fontWeight: 950, letterSpacing: 1.05, textTransform: 'uppercase', marginBottom: 8 }
-const filterButtonStyle: CSSProperties = { display: 'block', width: '100%', textAlign: 'left', background: '#FBF7EF', color: '#141414', border: '1px solid #ECE5D8', borderRadius: 12, padding: '10px 11px', fontSize: 13, fontWeight: 800, marginBottom: 7, cursor: 'pointer' }
-const activeFilterButtonStyle: CSSProperties = { background: '#141414', color: '#fff', borderColor: '#141414' }
-const rangeStyle: CSSProperties = { width: '100%', accentColor: '#141414' }
-const feedStyle: CSSProperties = { minWidth: 0 }
-const feedHeaderStyle: CSSProperties = { background: '#FFFDF8', border: '1px solid #E2DCD0', borderRadius: 22, padding: 18, display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', marginBottom: 14 }
-const selectStyle: CSSProperties = { border: '1px solid #E2DCD0', background: '#FBF7EF', borderRadius: 12, padding: '10px 12px', fontWeight: 850, outline: 'none' }
+
+/* ─── Compact horizontal filter bar ─── */
+const filterBarStyle: CSSProperties = {
+  maxWidth: 1240, margin: '0 auto 20px',
+  background: '#FFFDF8', border: '1px solid #E2DCD0', borderRadius: 18,
+  padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12,
+}
+const filterRowStyle: CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+}
+const filterGroupLabel: CSSProperties = {
+  fontSize: 10.5, fontWeight: 900, letterSpacing: 1, textTransform: 'uppercase',
+  color: '#9B9488', whiteSpace: 'nowrap' as const, marginRight: 2,
+}
+const filterDivider: CSSProperties = { width: 1, height: 22, background: '#E2DCD0', flexShrink: 0, margin: '0 4px' }
+const rangeStyle: CSSProperties = { width: 120, accentColor: '#141414', cursor: 'pointer' }
+const rangeValueBadge: CSSProperties = {
+  background: '#EFE9DE', borderRadius: 999, padding: '4px 10px',
+  fontSize: 12, fontWeight: 800, color: '#141414', whiteSpace: 'nowrap' as const,
+}
+const selectStyle: CSSProperties = {
+  border: '1.5px solid #E2DCD0', background: '#FBF7EF', borderRadius: 999,
+  padding: '6px 12px', fontWeight: 700, outline: 'none', fontSize: 12.5, cursor: 'pointer',
+}
+const resetButtonStyle: CSSProperties = {
+  border: '1.5px solid #E2DCD0', background: 'transparent', borderRadius: 999,
+  padding: '6px 13px', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#6F6B64',
+}
+
+/* ─── Feed ─── */
+const feedStyle: CSSProperties = { maxWidth: 1240, margin: '0 auto' }
+const feedHeaderStyle: CSSProperties = {
+  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+  marginBottom: 14, padding: '0 2px',
+}
 const emptyStyle: CSSProperties = { background: '#FFFDF8', border: '1px solid #E2DCD0', borderRadius: 18, padding: 28, color: '#6F6B64', fontSize: 14 }
+
+/* ─── Job cards ─── */
 const jobCardStyle: CSSProperties = { background: '#FFFDF8', border: '1px solid #E4DFD5', borderRadius: 24, padding: 18, display: 'flex', gap: 16, boxShadow: '0 12px 38px rgba(58,45,27,0.06)' }
 const companyBadgeStyle: CSSProperties = { width: 52, height: 52, borderRadius: 16, background: '#DDEFE4', color: '#1E714A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 950, flexShrink: 0 }
 const jobTopRowStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }

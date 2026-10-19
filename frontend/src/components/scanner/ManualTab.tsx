@@ -60,16 +60,16 @@ export default function ManualTab({ onDataProcessed }: Props) {
 
   return (
     <div style={{ background: '#fff', border: '1px solid #E0DDD8', borderRadius: 12, padding: '24px' }}>
-      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Skill Quiz</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: '#000000', marginBottom: 4 }}>Skill Quiz</h3>
       <p style={{ fontSize: 13, color: '#6B6B6B', marginBottom: 24 }}>Answer these questions to help us identify your skill level.</p>
 
       <div style={{ display: 'grid', gap: 20 }}>
         {QUESTIONS.map(q => (
           <div key={q.id}>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{q.question}</label>
+            <label style={{ display: 'block', fontSize: 13, color: '#434242ff', fontWeight: 600, marginBottom: 8 }}>{q.question}</label>
             {q.type === 'text' ? (
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="e.g. Python, SQL, React"
                 value={answers[q.id] || ''}
                 onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })}

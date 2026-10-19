@@ -64,7 +64,7 @@ export default function PdfTab({ onDataExtracted }: Props) {
       />
       
       <div style={{ fontSize: 32, marginBottom: 12 }}>📄</div>
-      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 700,color: '#000000a4',marginBottom: 4 }}>
         {loading ? 'Analyzing...' : 'Upload Resume/LinkedIn PDF'}
       </h3>
       <p style={{ fontSize: 13, color: '#6B6B6B' }}>

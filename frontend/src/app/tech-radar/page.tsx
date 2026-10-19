@@ -1,7 +1,7 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { connectToTechRadarPost, createTechRadarPost, fetchTechRadarPosts } from '@/lib/api'
 import type { TechRadarMode, TechRadarPost } from '@/lib/types'
@@ -17,7 +17,7 @@ const modes: Array<{
   { id: 'doubt', title: 'Ask or answer doubts', subtitle: 'Post blockers and get help from peers who already solved them.', action: 'Ask a doubt' },
 ]
 
-export default function TechRadarPage() {
+function TechRadarInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [activeMode, setActiveMode] = useState<TechRadarMode>('buddy')
@@ -258,3 +258,11 @@ const primaryButtonStyle: CSSProperties = { width: '100%', marginTop: 14, backgr
 const alertStyle: CSSProperties = { background: '#FDE8E1', color: '#B42318', border: '1px solid #F8C9BD', borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 13 }
 const noticeStyle: CSSProperties = { background: '#DFF1E8', color: '#197247', border: '1px solid #BCE2CC', borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 13 }
 const mutedTextStyle: CSSProperties = { color: '#6F6B64', fontSize: 13, lineHeight: 1.5 }
+
+export default function TechRadarPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FDFAF4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6F6B64', fontSize: 14 }}>Loading Tech Radar…</div>}>
+      <TechRadarInner />
+    </Suspense>
+  )
+}

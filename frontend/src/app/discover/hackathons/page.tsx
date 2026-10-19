@@ -4,7 +4,8 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
-import { fetchHackathons } from '@/lib/api'
+import { fetchHackathons, fetchDashboardSummary } from '@/lib/api'
+import Sidebar from '@/components/dashboard/Sidebar'
 import type { HackathonListing, HackathonsResponse } from '@/lib/types'
 
 type ModeFilter = 'all' | 'online' | 'offline'
@@ -12,12 +13,20 @@ type DurationFilter = 'all' | 'weekend' | 'week' | 'long'
 type TeamFilter = 'all' | 'solo' | 'small' | 'large'
 type SortMode = 'soon' | 'duration' | 'team'
 
+function getInitials(name: string, email: string) {
+  const src = name || email || 'AK'
+  const parts = src.replace(/[^a-zA-Z\s]/g, ' ').trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+  return src.slice(0, 2).toUpperCase()
+}
+
 export default function HackathonsPage() {
   const router = useRouter()
   const [data, setData] = useState<HackathonsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [userProfile, setUserProfile] = useState<{ role?: string; name?: string; initials?: string }>({})
   const [modeFilter, setModeFilter] = useState<ModeFilter>('all')
   const [durationFilter, setDurationFilter] = useState<DurationFilter>('all')
   const [teamFilter, setTeamFilter] = useState<TeamFilter>('all')
@@ -57,6 +66,23 @@ export default function HackathonsPage() {
         router.push('/login')
         return
       }
+
+      const fallbackName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || ''
+      setUserProfile({
+        name: fallbackName,
+        initials: getInitials(fallbackName, session.user.email || ''),
+      })
+
+      fetchDashboardSummary().then((summary) => {
+        if (!cancelled && summary?.user) {
+          const name = summary.user.full_name || summary.user.email?.split('@')[0] || fallbackName
+          setUserProfile({
+            role: summary.user.role ?? undefined,
+            name,
+            initials: getInitials(name, summary.user.email || ''),
+          })
+        }
+      }).catch(() => {})
       try {
         const result = await fetchHackathons()
         if (!cancelled) setData(result)
@@ -94,23 +120,32 @@ export default function HackathonsPage() {
   }, [data, durationFilter, locationQuery, modeFilter, sortMode, teamFilter])
 
   if (loading) {
-    return <main style={pageStyle}><div style={loadingStyle}>Fetching India-based hackathons from backend...</div></main>
+    return (
+      <div style={{ minHeight: '100vh', background: '#F4EFE6' }}>
+        <Sidebar role={userProfile.role} name={userProfile.name} initials={userProfile.initials} />
+        <main style={{ marginLeft: 224, ...pageStyle }}>
+          <div style={loadingStyle}>Fetching India-based hackathons from backend...</div>
+        </main>
+      </div>
+    )
   }
 
   return (
-    <main style={pageStyle}>
-      <section style={heroStyle}>
-        <div>
-          <button onClick={() => router.push('/dashboard')} style={backButtonStyle}>Dashboard</button>
-          <div style={eyebrowStyle}>Hackathons</div>
-          <h1 style={titleStyle}>Find competitions and build a team through Tech Radar.</h1>
-          <p style={leadStyle}>Hackathons are fetched from Devfolio, Unstop and India-filtered Hack Club events through FastAPI, cached in MongoDB, then filtered by duration, location, online/offline mode and team size.</p>
-          <div style={pillRowStyle}>
-            <span style={darkPillStyle}>{data?.meta.total || 0} hackathons</span>
-            <span style={lightPillStyle}>{data?.meta.cached ? `Cached ${data.meta.cache_age_hours}h ago` : 'Fresh multi-source fetch'}</span>
-            <button onClick={() => load(true)} disabled={refreshing} style={refreshButtonStyle}>{refreshing ? 'Refreshing...' : 'Refresh'}</button>
+    <div style={{ minHeight: '100vh', background: '#F4EFE6' }}>
+      <Sidebar role={userProfile.role} name={userProfile.name} initials={userProfile.initials} />
+      <main style={{ marginLeft: 224, ...pageStyle }}>
+        <section style={heroStyle}>
+          <div>
+            <button onClick={() => router.push('/dashboard')} style={backButtonStyle}>← Dashboard</button>
+            <div style={eyebrowStyle}>Hackathons</div>
+            <h1 style={titleStyle}>Find competitions and build a team through Tech Radar.</h1>
+            <p style={leadStyle}>Discover upcoming hackathons curated from Devfolio, Unstop, and global communities. Filter by duration, mode, and team size — and find teammates directly via Tech Radar.</p>
+            <div style={pillRowStyle}>
+              <span style={darkPillStyle}>{data?.meta.total || 0} hackathons</span>
+              <span style={lightPillStyle}>{data?.meta.cached ? `Cached ${data.meta.cache_age_hours}h ago` : 'Live events'}</span>
+              <button onClick={() => load(true)} disabled={refreshing} style={refreshButtonStyle}>{refreshing ? 'Refreshing...' : 'Refresh'}</button>
+            </div>
           </div>
-        </div>
         <div style={heroCardStyle}>
           <span style={{ color: 'rgba(255,255,255,0.56)', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: 1.1 }}>Team Finder</span>
           <strong style={{ display: 'block', fontSize: 44, marginTop: 8 }}>{filtered.filter((item) => (item.team_size_max || 0) > 2).length}</strong>
@@ -173,7 +208,8 @@ export default function HackathonsPage() {
         </section>
       </section>
     </main>
-  )
+  </div>
+)
 
   function resetFilters() {
     setModeFilter('all')

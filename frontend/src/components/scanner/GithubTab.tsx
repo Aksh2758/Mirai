@@ -42,10 +42,10 @@ export default function GithubTab({ onDataFetched, fetched }: Props) {
 
   return (
     <div style={{ background: '#fff', border: '1px solid #E0DDD8', borderRadius: 12, padding: '24px' }}>
-      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>GitHub Profile URL</h3>
-      <p style={{ fontSize: 13, color: '#6B6B6B', marginBottom: 20 }}>Paste your GitHub profile link to analyze your repository activity.</p>
+      <h3 style={{ fontSize: 16, fontWeight: 700,color: '#000000a4', marginBottom: 8 }}>GitHub Profile URL</h3>
+      <p style={{ fontSize: 13, color: '#6b6b6b', marginBottom: 20 }}>Paste your GitHub profile link to analyze your repository activity.</p>
       
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 10, color: '#000000c4' }}>
         <input
           type="text"
           placeholder="https://github.com/yourusername"
