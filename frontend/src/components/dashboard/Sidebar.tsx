@@ -11,7 +11,7 @@ const icon = (d: ReactNode) => (
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: icon(<><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></>) },
-  { label: 'Studio', href: '/scanner', icon: icon(<><path d="M8 7l-5 5 5 5" /><path d="M16 7l5 5-5 5" /></>) },
+  { label: 'Studio', href: '/studio', icon: icon(<><path d="M8 7l-5 5 5 5" /><path d="M16 7l5 5-5 5" /></>) },
   { label: 'Internships', href: '/discover/internships', icon: icon(<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2" /></>) },
   { label: 'Hackathons', href: '/discover/hackathons', icon: icon(<><path d="M8 21h8M12 17v4" /><path d="M7 4h10v5a5 5 0 01-10 0V4z" /><path d="M7 6H4v1a3 3 0 003 3M17 6h3v1a3 3 0 01-3 3" /></>) },
   { label: 'Tech Radar', href: '/tech-radar', icon: icon(<><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3 3-5 6-5s6 2 6 5" /><path d="M16 5a3 3 0 010 6M18 15c2 .6 3 2.2 3 5" /></>) },

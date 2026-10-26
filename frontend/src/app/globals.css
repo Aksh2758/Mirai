@@ -9,9 +9,9 @@
   --color-dark: #0D0D0D;
   --color-dark-surface: #161616;
   
-  --font-syne: var(--font-syne), sans-serif;
-  --font-dm-sans: var(--font-dm-sans), sans-serif;
-  --font-jetbrains: var(--font-jetbrains), monospace;
+  --font-syne: var(--nirmaan-font-syne);
+  --font-dm-sans: var(--nirmaan-font-dm-sans);
+  --font-jetbrains: var(--nirmaan-font-jetbrains);
 
   --animate-fade-up: fade-up 0.5s ease-out forwards;
 }
@@ -49,6 +49,9 @@ html, body {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 :root {
+  --nirmaan-font-syne: "Trebuchet MS", sans-serif;
+  --nirmaan-font-dm-sans: Arial, Helvetica, sans-serif;
+  --nirmaan-font-jetbrains: "Cascadia Code", Consolas, monospace;
   --ink: #0A0A0A;
   --bg: #0D0D0D;
   --surface: #141414;

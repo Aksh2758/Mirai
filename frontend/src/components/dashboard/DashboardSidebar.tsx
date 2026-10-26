@@ -18,7 +18,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 const sidebarLinks = [
   { label: "Home", href: "/dashboard", icon: Home },
-  { label: "Studio", href: "/forge", icon: Code2 },
+  { label: "Studio", href: "/studio", icon: Code2 },
   { label: "Skill Hub", href: "/scanner", icon: BookOpen, badge: "6%" },
   { label: "Internships", href: "/discover", icon: Briefcase, dot: true },
   { label: "Hackathons", href: "/discover", icon: Trophy },
