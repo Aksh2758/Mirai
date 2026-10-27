@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion } from "framer-motion"
-import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import CodeEditorPanel from "@/components/studio/lab/CodeEditorPanel"
 import AIAssistantSidebar from "@/components/studio/lab/AIAssistantSidebar"
 import AlgorithmVisualizer from "@/components/studio/lab/AlgorithmVisualizer"
@@ -24,12 +25,21 @@ import {
   type TreeNode,
 } from "@/components/studio/lab/projects"
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, usePanelRef } from "react-resizable-panels"
-import { Code2, Cpu } from "lucide-react"
+import { BriefcaseBusiness, Code2, Cpu, LayoutDashboard, Menu, Radar, Trophy, X } from "lucide-react"
 
 const baseName = (path: string) => path.split("/").pop() ?? path
 
+const studioNavigation = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Studio", href: "/studio", icon: Code2 },
+  { label: "Internships", href: "/discover/internships", icon: BriefcaseBusiness },
+  { label: "Hackathons", href: "/discover/hackathons", icon: Trophy },
+  { label: "Tech Radar", href: "/tech-radar", icon: Radar },
+]
+
 export default function StudioPage() {
-  const router = useRouter()
+  const pathname = usePathname()
+  const [isNavigationOpen, setIsNavigationOpen] = useState(false)
   const [openProjectId, setOpenProjectId] = useState<string | null>(null)
   const [tabs, setTabs] = useState<string[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
@@ -190,12 +200,14 @@ export default function StudioPage() {
       <div className="h-14 flex-shrink-0 flex items-center px-4 sm:px-8 bg-black/40 backdrop-blur-3xl border-b border-white/5 gap-4 sm:gap-6 z-40 relative">
         <button
           type="button"
-          onClick={() => router.push('/dashboard')}
-          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
-          title="Return to the main menu"
+          onClick={() => setIsNavigationOpen(open => !open)}
+          aria-label={isNavigationOpen ? "Close navigation menu" : "Open navigation menu"}
+          aria-expanded={isNavigationOpen}
+          aria-controls="studio-navigation"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          title={isNavigationOpen ? "Close navigation menu" : "Open navigation menu"}
         >
-          <span aria-hidden="true">←</span>
-          <span>Main Menu</span>
+          {isNavigationOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
         <div className="flex items-center gap-4">
            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.1)]">
@@ -235,6 +247,37 @@ export default function StudioPage() {
 
       {/* Vertical Studio Rail + 3-Column Layout */}
       <div className="flex-1 flex overflow-hidden relative">
+
+        <aside
+          id="studio-navigation"
+          aria-label="Main navigation"
+          aria-hidden={!isNavigationOpen}
+          className={`flex-shrink-0 overflow-hidden border-r border-white/5 bg-[#0b0b0b] transition-[width] duration-200 ${isNavigationOpen ? "w-56" : "w-0 border-r-0"}`}
+        >
+          <div className="flex h-full w-56 flex-col">
+            <div className="flex h-[84px] items-center border-b border-white/[0.07] px-[26px]">
+              <div className="text-2xl font-extrabold tracking-tight text-white">
+                Nirmaan<span className="text-[#52D273]">.</span>
+              </div>
+            </div>
+            <nav className="flex-1 py-5">
+              {studioNavigation.map(({ label, href, icon: Icon }) => {
+                const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`))
+                return (
+                  <Link
+                    key={label}
+                    href={href}
+                    tabIndex={isNavigationOpen ? 0 : -1}
+                    className={`mx-3 my-0.5 flex h-11 items-center gap-3.5 rounded-lg px-3.5 text-sm no-underline transition ${active ? "bg-[rgba(82,210,115,0.12)] text-white shadow-[inset_-3px_0_0_#52D273]" : "text-white/75 hover:bg-white/[0.06] hover:text-white"}`}
+                  >
+                    <Icon className={`h-[18px] w-[18px] ${active ? "text-[#52D273]" : "text-white/55"}`} />
+                    <span>{label}</span>
+                  </Link>
+                )
+              })}
+            </nav>
+          </div>
+        </aside>
 
         {/* The Actual Panel System */}
         <PanelGroup orientation="horizontal" className="flex-1 min-w-0">
