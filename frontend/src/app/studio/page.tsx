@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion } from "framer-motion"
+import { useRouter } from "next/navigation"
 import CodeEditorPanel from "@/components/studio/lab/CodeEditorPanel"
 import AIAssistantSidebar from "@/components/studio/lab/AIAssistantSidebar"
 import AlgorithmVisualizer from "@/components/studio/lab/AlgorithmVisualizer"
@@ -28,6 +29,7 @@ import { Code2, Cpu } from "lucide-react"
 const baseName = (path: string) => path.split("/").pop() ?? path
 
 export default function StudioPage() {
+  const router = useRouter()
   const [openProjectId, setOpenProjectId] = useState<string | null>(null)
   const [tabs, setTabs] = useState<string[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
@@ -185,7 +187,16 @@ export default function StudioPage() {
   return (
     <div className="flex flex-col w-full h-screen bg-[#09090b] text-[#fafafa] overflow-y-auto lg:overflow-hidden relative">
       {/* Top Breadcrumb Bar */}
-      <div className="h-14 flex-shrink-0 flex items-center px-8 bg-black/40 backdrop-blur-3xl border-b border-white/5 gap-6 z-40 relative">
+      <div className="h-14 flex-shrink-0 flex items-center px-4 sm:px-8 bg-black/40 backdrop-blur-3xl border-b border-white/5 gap-4 sm:gap-6 z-40 relative">
+        <button
+          type="button"
+          onClick={() => router.push('/dashboard')}
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-300 transition hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          title="Return to the main menu"
+        >
+          <span aria-hidden="true">←</span>
+          <span>Main Menu</span>
+        </button>
         <div className="flex items-center gap-4">
            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.1)]">
              <Code2 className="h-5 w-5 text-cyan-400" />
