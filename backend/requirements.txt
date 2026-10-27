@@ -12,4 +12,7 @@ requests
 httpx
 motor
 pymongo
+scikit-learn>=1.5
+joblib
+pandas
 # NOTE: Do NOT add 'bson' as a separate package — it comes with pymongo

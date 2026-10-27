@@ -1,15 +1,24 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
-export default function LoginPage() {
+function LoginInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+
+  // The OAuth callback sends people back here with ?error=auth_failed when sign-in fails
+  useEffect(() => {
+    if (searchParams.get('error') === 'auth_failed') {
+      setError('Sign-in could not be completed. Please try again.')
+    }
+  }, [searchParams])
 
   // After any successful login, check profile and redirect
   async function handlePostLogin() {
@@ -35,8 +44,9 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setInfo(null)
 
-    const { error: authError } = isSignUp
+    const { data: authData, error: authError } = isSignUp
       ? await supabase.auth.signUp({ 
           email, 
           password, 
@@ -47,6 +57,15 @@ export default function LoginPage() {
     if (authError) {
       console.error('Auth error full details:', authError)
       setError(authError.message)
+      setLoading(false)
+      return
+    }
+
+    // With email confirmation switched on, sign-up succeeds but returns no session yet.
+    // Without this message the page just sits there and looks frozen.
+    if (isSignUp && !authData?.session) {
+      setInfo('Account created. Check your email and click the confirmation link, then sign in.')
+      setIsSignUp(false)
       setLoading(false)
       return
     }
@@ -70,8 +89,8 @@ export default function LoginPage() {
         console.error('GitHub Auth error:', authError)
         setError(authError.message)
       }
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'GitHub sign-in failed')
     } finally {
       setLoading(false)
     }
@@ -101,6 +120,12 @@ export default function LoginPage() {
           <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>or</span>
           <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
         </div>
+
+        {info && (
+          <div style={{ background: 'rgba(74, 222, 128, 0.1)', border: '1px solid #4ADE80', borderRadius: 8, padding: '12px', marginBottom: 20 }}>
+            <p style={{ color: '#4ADE80', fontSize: 13, margin: 0 }}>{info}</p>
+          </div>
+        )}
 
         {error && (
           <div style={{ background: 'rgba(255, 87, 51, 0.1)', border: '1px solid #FF5733', borderRadius: 8, padding: '12px', marginBottom: 20 }}>
@@ -142,5 +167,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginInner />
+    </Suspense>
   )
 }

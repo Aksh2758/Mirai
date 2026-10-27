@@ -1,6 +1,6 @@
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import unescape
 from math import ceil
 from typing import Any
@@ -13,8 +13,11 @@ from services.jobs_service import get_jobs_with_cache
 HACK_CLUB_EVENTS_URL = "https://hackathons.hackclub.com/api/events/upcoming"
 DEVFOLIO_HACKATHONS_URL = "https://api.devfolio.co/api/hackathons"
 UNSTOP_HACKATHONS_URL = "https://unstop.com/api/public/opportunity/search-result"
-HACKATHON_SOURCE_LABEL = "Devfolio + Unstop + Hack Club India"
-HACKATHON_CACHE_KEY = "india_multi_source_v1"
+DEVPOST_URL = "https://devpost.com/api/hackathons"
+HACKEREARTH_URL = "https://www.hackerearth.com/chrome-extension/events/"
+HACKATHON_SOURCE_LABEL = "Devfolio + Unstop + Devpost + HackerEarth + Hack Club"
+HACKATHON_CACHE_KEY = "india_multi_source_v2"   # new key: old cache (full of past events) is ignored
+MAX_HACKATHONS = 60
 HACKATHON_CACHE_TTL_HOURS = 6
 HACKATHON_TIMEOUT_SECONDS = 10.0
 INDIA_HINTS = {
@@ -47,7 +50,8 @@ def _strip_html(value: str | None) -> str:
 
 def _india_text_match(*values: Any) -> bool:
     text = " ".join(str(value or "") for value in values).lower()
-    return any(hint in text for hint in INDIA_HINTS)
+    # word-boundary match: plain substring made "in" match "Berlin"/"Singapore"
+    return any(re.search(r"(?<![a-z])" + re.escape(hint) + r"(?![a-z])", text) for hint in INDIA_HINTS)
 
 
 def _format_location(event: dict[str, Any]) -> tuple[str, bool]:
@@ -173,9 +177,36 @@ def _teammate_prefill(title: str, location: str, start_date: str, url: str, team
 
 def _status(start_dt: datetime | None, end_dt: datetime | None, fallback_open: bool = False) -> str:
     now = datetime.now(timezone.utc)
+    if end_dt and end_dt < now:
+        return "ended"
     if start_dt and start_dt <= now and (not end_dt or end_dt >= now):
         return "open"
     return "open" if fallback_open else "upcoming"
+
+
+def is_hackathon_current(item: dict[str, Any], now: datetime | None = None) -> bool:
+    """True only for events that have not finished. Used both when fetching and when reading the
+    cache, so a past event can never be shown even if it was cached earlier."""
+    now = now or datetime.now(timezone.utc)
+    if item.get("status") == "ended":
+        return False
+    end_dt = _parse_date(item.get("end_date"))
+    if end_dt:
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+        return end_dt >= now
+    start_dt = _parse_date(item.get("start_date"))
+    if start_dt:
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+        return start_dt >= now - timedelta(days=3)
+    return True  # no dates at all: keep (the source said it is live)
+
+
+def _sort_key(item: dict[str, Any]) -> tuple:
+    """Ongoing first, then soonest upcoming."""
+    start = item.get("start_date") or item.get("end_date") or "9999"
+    return (0 if item.get("status") == "open" else 1, start)
 
 
 def _normalize_hackclub_hackathon(event: dict[str, Any]) -> dict[str, Any] | None:
@@ -297,8 +328,11 @@ def _normalize_unstop_hackathon(event: dict[str, Any]) -> dict[str, Any] | None:
 
     details_text = _strip_html(event.get("details") or "")
     req = event.get("regnRequirements") or {}
-    start_dt = _parse_date(req.get("start_regn_dt") or event.get("approved_date") or event.get("updated_at"))
+    start_dt = _parse_date(event.get("start_date") or req.get("start_regn_dt") or event.get("approved_date"))
     end_dt = _parse_date(event.get("end_date") or req.get("end_regn_dt"))
+    regn_end = _parse_date(req.get("end_regn_dt"))
+    if regn_end and not event.get("end_date") and regn_end < datetime.now(timezone.utc):
+        end_dt = regn_end   # registration closed and no event end known: treat as finished
     duration_hours, duration_days = _duration_from_text(details_text)
     if duration_hours is None:
         duration_hours, duration_days = _duration(start_dt, end_dt)
@@ -347,31 +381,178 @@ async def _fetch_hackclub(client: httpx.AsyncClient) -> list[dict[str, Any]]:
 async def _fetch_devfolio(client: httpx.AsyncClient) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for filter_name in ["live", "application_open", "upcoming", "all"]:
-        response = await client.get(DEVFOLIO_HACKATHONS_URL, params={"page": 1, "filter": filter_name})
-        if response.status_code >= 400:
-            continue
-        payload = response.json()
-        events = payload.get("result", []) if isinstance(payload, dict) else []
-        for event in events:
-            if not isinstance(event, dict):
-                continue
-            normalized = _normalize_devfolio_hackathon(event)
-            if normalized and normalized["id"] not in seen:
-                seen.add(normalized["id"])
-                items.append(normalized)
+    # "all" is deliberately NOT used: it returns years of finished events.
+    for filter_name in ["live", "application_open", "upcoming"]:
+        for page in (1, 2, 3):
+            response = await client.get(DEVFOLIO_HACKATHONS_URL, params={"page": page, "filter": filter_name})
+            if response.status_code >= 400:
+                break
+            payload = response.json()
+            events = payload.get("result", []) if isinstance(payload, dict) else []
+            if not events:
+                break
+            for event in events:
+                if not isinstance(event, dict):
+                    continue
+                normalized = _normalize_devfolio_hackathon(event)
+                if normalized and normalized["id"] not in seen:
+                    seen.add(normalized["id"])
+                    items.append(normalized)
     return items
 
 
 async def _fetch_unstop(client: httpx.AsyncClient) -> list[dict[str, Any]]:
-    response = await client.get(
-        UNSTOP_HACKATHONS_URL,
-        params={"opportunity": "hackathons", "location": "india", "page": 1, "per_page": 30},
-    )
+    out: list[dict[str, Any]] = []
+    for page in (1, 2, 3):
+        response = await client.get(
+            UNSTOP_HACKATHONS_URL,
+            params={"opportunity": "hackathons", "oppstatus": "open", "page": page, "per_page": 30},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        data = payload.get("data") if isinstance(payload, dict) else None
+        events = (data.get("data") if isinstance(data, dict) else data) or []
+        if not events:
+            break
+        out += [item for event in events if isinstance(event, dict) and (item := _normalize_unstop_hackathon(event))]
+    return out
+
+
+_MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+
+
+def _parse_devpost_range(text: str) -> tuple[datetime | None, datetime | None]:
+    """Devpost gives dates as text: 'Oct 01 - Dec 15, 2026', 'Oct 20 - 22, 2026', 'Dec 30, 2026 - Jan 02, 2027'."""
+    t = (text or "").replace(",", " ")
+    tokens = re.findall(r"[A-Za-z]{3,9}|\d{1,4}", t)
+    # walk tokens building (month, day, year?) triples
+    dates: list[list[int | None]] = []
+    month = None
+    for tok in tokens:
+        if tok[:3].lower() in _MONTHS and not tok.isdigit():
+            month = _MONTHS[tok[:3].lower()]
+            dates.append([month, None, None])
+        elif tok.isdigit():
+            n = int(tok)
+            if n > 1900 and dates:
+                dates[-1][2] = n
+            elif dates and dates[-1][1] is None:
+                dates[-1][1] = n
+            elif month is not None:  # second day in "Oct 20 - 22"
+                dates.append([month, n, None])
+    dates = [d for d in dates if d[1]]
+    if not dates:
+        return None, None
+    year = next((d[2] for d in reversed(dates) if d[2]), datetime.now(timezone.utc).year)
+    for d in dates:
+        d[2] = d[2] or year
+    try:
+        start = datetime(dates[0][2], dates[0][0], dates[0][1], tzinfo=timezone.utc)
+        last = dates[-1]
+        end = datetime(last[2], last[0], last[1], 23, 59, tzinfo=timezone.utc)
+    except ValueError:
+        return None, None
+    if end < start:   # "Dec 30 - Jan 02, 2027": start belongs to the previous year
+        start = start.replace(year=start.year - 1)
+    return start, end
+
+
+def _normalize_devpost(event: dict[str, Any]) -> dict[str, Any] | None:
+    title = str(event.get("title") or "").strip()
+    url = str(event.get("url") or "").strip()
+    if not title or not url:
+        return None
+    loc_obj = event.get("displayed_location") or {}
+    location_text = str(loc_obj.get("location") if isinstance(loc_obj, dict) else loc_obj or "").strip()
+    is_online = "online" in location_text.lower()
+    if not is_online and not _india_text_match(location_text):
+        return None   # offline abroad: not useful for Indian students
+    start_dt, end_dt = _parse_devpost_range(str(event.get("submission_period_dates") or ""))
+    themes = _themes({"themes": event.get("themes")}, is_online, "Devpost")
+    hours, days = _duration(start_dt, end_dt)
+    start_date = start_dt.isoformat() if start_dt else ""
+    thumb = str(event.get("thumbnail_url") or "")
+    if thumb.startswith("//"):
+        thumb = "https:" + thumb
+    return {
+        "id": f"devpost-{event.get('id') or title.lower().replace(' ', '-')}",
+        "title": title,
+        "organizer": str(event.get("organization_name") or "Devpost"),
+        "location": "Online" if is_online else location_text,
+        "is_online": is_online,
+        "start_date": start_date,
+        "end_date": end_dt.isoformat() if end_dt else "",
+        "duration_hours": hours,
+        "duration_days": days,
+        "team_size_min": None,
+        "team_size_max": None,
+        "team_required": False,
+        "teammate_prefill": None,
+        "url": url,
+        "source": "Devpost",
+        "status": _status(start_dt, end_dt, fallback_open=event.get("open_state") == "open"),
+        "themes": themes,
+        "logo_url": "",
+        "banner_url": thumb,
+    }
+
+
+async def _fetch_devpost(client: httpx.AsyncClient) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for page in (1, 2, 3):
+        response = await client.get(
+            DEVPOST_URL,
+            params=[("status[]", "open"), ("status[]", "upcoming"), ("order_by", "deadline"), ("page", page)],
+        )
+        response.raise_for_status()
+        payload = response.json()
+        events = payload.get("hackathons", []) if isinstance(payload, dict) else []
+        if not events:
+            break
+        out += [item for event in events if isinstance(event, dict) and (item := _normalize_devpost(event))]
+    return out
+
+
+def _normalize_hackerearth(event: dict[str, Any]) -> dict[str, Any] | None:
+    if str(event.get("challenge_type") or "").lower() not in {"hackathon", "hackathons"}:
+        return None
+    title = str(event.get("title") or "").strip()
+    url = str(event.get("url") or "").strip()
+    if not title or not url:
+        return None
+    start_dt = _parse_date(event.get("start_utc_tz") or event.get("start_timestamp"))
+    end_dt = _parse_date(event.get("end_utc_tz") or event.get("end_timestamp"))
+    hours, days = _duration(start_dt, end_dt)
+    start_date = start_dt.isoformat() if start_dt else ""
+    return {
+        "id": f"hackerearth-{event.get('id') or title.lower().replace(' ', '-')}",
+        "title": title,
+        "organizer": str(event.get("college") or "HackerEarth"),
+        "location": "Online",
+        "is_online": True,
+        "start_date": start_date,
+        "end_date": end_dt.isoformat() if end_dt else "",
+        "duration_hours": hours,
+        "duration_days": days,
+        "team_size_min": None,
+        "team_size_max": None,
+        "team_required": False,
+        "teammate_prefill": None,
+        "url": url,
+        "source": "HackerEarth",
+        "status": _status(start_dt, end_dt),
+        "themes": _themes({}, True, "HackerEarth"),
+        "logo_url": "",
+        "banner_url": str(event.get("cover_image") or event.get("banner") or ""),
+    }
+
+
+async def _fetch_hackerearth(client: httpx.AsyncClient) -> list[dict[str, Any]]:
+    response = await client.get(HACKEREARTH_URL)
     response.raise_for_status()
     payload = response.json()
-    events = ((payload.get("data") or {}).get("data") or []) if isinstance(payload, dict) else []
-    return [item for event in events if isinstance(event, dict) and (item := _normalize_unstop_hackathon(event))]
+    events = payload.get("response", []) if isinstance(payload, dict) else []
+    return [item for event in events if isinstance(event, dict) and (item := _normalize_hackerearth(event))]
 
 
 def _dedupe_hackathons(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -390,8 +571,12 @@ def _dedupe_hackathons(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return deduped
 
 
-async def fetch_hackathons_from_internet(limit: int = 36, force_refresh: bool = False) -> dict[str, Any]:
-    """Fetch India-first hackathons from Devfolio, Unstop and India-filtered Hack Club, then cache them."""
+_SOURCE_NAMES = ["Devfolio", "Unstop", "Devpost", "HackerEarth", "Hack Club"]
+
+
+async def fetch_hackathons_from_internet(limit: int = MAX_HACKATHONS, force_refresh: bool = False) -> dict[str, Any]:
+    """Fetch hackathons from five sources, drop finished ones, cache them in MongoDB.
+    Past events are filtered again on every read, so they cannot appear even from an old cache."""
     cache_col = _hackathons_collection()
     now = datetime.now(timezone.utc)
 
@@ -400,13 +585,17 @@ async def fetch_hackathons_from_internet(limit: int = 36, force_refresh: bool = 
         if cached:
             fetched_at = cached.get("fetched_at")
             if isinstance(fetched_at, datetime):
+                if fetched_at.tzinfo is None:
+                    fetched_at = fetched_at.replace(tzinfo=timezone.utc)
                 age_hours = (now - fetched_at).total_seconds() / 3600
-                if age_hours < HACKATHON_CACHE_TTL_HOURS:
+                live = [h for h in cached.get("results", []) if is_hackathon_current(h, now)]
+                if age_hours < HACKATHON_CACHE_TTL_HOURS and live:
                     return {
-                        "hackathons": cached.get("results", [])[:limit],
+                        "hackathons": live[:limit],
                         "cached": True,
                         "cache_age_hours": round(age_hours, 1),
                         "source": HACKATHON_SOURCE_LABEL,
+                        "source_report": cached.get("source_report", []),
                     }
 
     async with httpx.AsyncClient(
@@ -417,34 +606,43 @@ async def fetch_hackathons_from_internet(limit: int = 36, force_refresh: bool = 
         source_results = await asyncio.gather(
             _fetch_devfolio(client),
             _fetch_unstop(client),
+            _fetch_devpost(client),
+            _fetch_hackerearth(client),
             _fetch_hackclub(client),
             return_exceptions=True,
         )
 
     normalized: list[dict[str, Any]] = []
     source_errors: list[str] = []
-    for result in source_results:
+    source_report: list[dict[str, Any]] = []
+    for name, result in zip(_SOURCE_NAMES, source_results):
         if isinstance(result, Exception):
-            source_errors.append(str(result))
-        else:
-            normalized.extend(result)
+            source_errors.append(f"{name}: {result!r}")
+            source_report.append({"source": name, "ok": False, "fetched": 0, "upcoming_or_live": 0, "error": repr(result)[:300]})
+            continue
+        current = [h for h in result if is_hackathon_current(h, now)]
+        source_report.append({"source": name, "ok": True, "fetched": len(result), "upcoming_or_live": len(current), "error": None})
+        normalized.extend(current)
 
     normalized = _dedupe_hackathons(normalized)
-    normalized.sort(key=lambda event: event.get("start_date") or event.get("end_date") or "9999")
-    normalized = normalized[:limit]
+    normalized.sort(key=_sort_key)
+    normalized = normalized[:MAX_HACKATHONS]
 
-    await cache_col.update_one(
-        {"source": HACKATHON_CACHE_KEY},
-        {"$set": {"source": HACKATHON_CACHE_KEY, "results": normalized, "source_errors": source_errors, "fetched_at": now}},
-        upsert=True,
-    )
+    if normalized or not force_refresh:
+        await cache_col.update_one(
+            {"source": HACKATHON_CACHE_KEY},
+            {"$set": {"source": HACKATHON_CACHE_KEY, "results": normalized, "source_errors": source_errors,
+                      "source_report": source_report, "fetched_at": now}},
+            upsert=True,
+        )
 
     return {
-        "hackathons": normalized,
+        "hackathons": normalized[:limit],
         "cached": False,
         "cache_age_hours": 0,
         "source": HACKATHON_SOURCE_LABEL,
         "source_errors": source_errors,
+        "source_report": source_report,
     }
 
 
@@ -487,6 +685,7 @@ async def get_hackathons(
             "cached": result.get("cached", False),
             "cache_age_hours": result.get("cache_age_hours", 0),
             "total": len(hackathons),
+            "source_report": result.get("source_report", []),
         },
     }
 
@@ -498,7 +697,7 @@ async def get_discovery_hub(user_id: str, force_refresh: bool = False) -> dict[s
     internships_error = None
 
     try:
-        jobs_result = await get_jobs_with_cache(user_id)
+        jobs_result = await get_jobs_with_cache(user_id, force_refresh=force_refresh)
         internships = jobs_result.get("jobs", [])
         internship_meta = {
             "role_searched": jobs_result.get("role_searched", ""),
@@ -526,6 +725,7 @@ async def get_discovery_hub(user_id: str, force_refresh: bool = False) -> dict[s
             "cached": hackathon_result.get("cached", False),
             "cache_age_hours": hackathon_result.get("cache_age_hours", 0),
             "total": len(hackathon_result.get("hackathons", [])),
+            "source_report": hackathon_result.get("source_report", []),
         },
         "hackathons_error": hackathons_error,
         "fetched_at": datetime.now(timezone.utc).isoformat(),

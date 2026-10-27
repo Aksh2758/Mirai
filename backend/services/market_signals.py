@@ -1,3 +1,22 @@
+"""
+services/market_signals.py
+
+Derives a live "what does the market want right now" signal from jobs_cache,
+instead of building a separate scraping/RAG pipeline.
+
+REAL SCHEMA (Supabase):
+    jobs_cache(id uuid, role text, results jsonb, fetched_at timestamptz)
+
+`results` is a JSON array of job postings (JSearch/RapidAPI shape). Each
+posting carries `required_skills` (list of str) -- that is what we count, once
+per posting. `matched_skills` / `match_pct` are user-specific and deliberately
+ignored. If a posting has no usable `required_skills`, we fall back to
+keyword-mining its title / description_snippet / raw.job_description.
+
+Any failure (table missing, network, empty cache) returns [] and the Scanner
+simply runs without the market signal. This module never raises.
+"""
+
 import json
 import logging
 import re

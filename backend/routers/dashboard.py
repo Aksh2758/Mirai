@@ -1,9 +1,50 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from bson import ObjectId
 from services.supabase_client import get_current_user_id, get_user_profile, get_supabase
-from db.mongo_client import get_projects_collection
+from services.jobs_service import get_jobs_with_cache
+from db.mongo_client import get_mongo_db, get_projects_collection
 
 router = APIRouter()
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+async def _activity_summary(user_id: str, project_steps: list[dict] | None = None) -> dict:
+    """Real activity for the dashboard streak: days on which the user saved/ran code in Studio
+    (studio_activity_events) or completed a roadmap step. Days are IST calendar days."""
+    now_local = datetime.now(IST)
+    since = (now_local - timedelta(days=60)).astimezone(timezone.utc)
+    days: set = set()
+
+    def _add(value) -> None:
+        if isinstance(value, datetime):
+            stamp = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+            days.add(stamp.astimezone(IST).date())
+
+    try:
+        cursor = get_mongo_db()["studio_activity_events"].find(
+            {"user_id": user_id, "created_at": {"$gte": since}}, {"created_at": 1}
+        )
+        async for doc in cursor:
+            _add(doc.get("created_at"))
+    except Exception:
+        pass  # activity is decoration; the dashboard must still load without it
+    for step in project_steps or []:
+        _add(step.get("completed_at"))
+
+    today = now_local.date()
+    monday = today - timedelta(days=today.weekday())
+    week = [(monday + timedelta(days=i)) in days for i in range(7)]
+
+    cursor_day = today if today in days else today - timedelta(days=1)
+    streak = 0
+    while cursor_day in days:
+        streak += 1
+        cursor_day -= timedelta(days=1)
+    return {"week_activity": week, "streak_days": streak, "today_index": today.weekday()}
 
 
 def _extract_todo_bullets(instructions: str, max_items: int = 3) -> list[str]:
@@ -71,6 +112,7 @@ async def get_dashboard_summary(
 
     # ── 2. Fetch active project from MongoDB ─────────────────────────────────
     active_project = None
+    active_steps: list[dict] = []
     active_project_id = profile.get("active_project_id")
 
     if active_project_id:
@@ -82,6 +124,7 @@ async def get_dashboard_summary(
             })
             if doc:
                 steps = doc.get("steps", [])
+                active_steps = steps
                 steps_done = sum(1 for s in steps if s.get("status") == "done")
                 steps_total = len(steps)
                 progress_pct = round((steps_done / steps_total) * 100) if steps_total > 0 else 0
@@ -112,48 +155,34 @@ async def get_dashboard_summary(
             # If MongoDB fetch fails, dashboard still loads — just no project
             active_project = None
 
-    # ── 3. Fetch top internship matches from jobs_cache ───────────────────────
-    # We read from cache only — never call JSearch here (costs API credits)
+    # ── 3. Top internship matches (cache only — never calls external job APIs here) ──
+    # Uses the same ranking as the Internships page, so expired postings and non-tech
+    # titles are filtered out and the match % agrees between the two screens.
     top_internships = []
-    role = profile.get("role")
-    skill_scores = profile.get("skill_scores", {})
-
-    if role:
+    if profile.get("role"):
         try:
-            cache = (
-                sb.table("jobs_cache")
-                .select("results")
-                .eq("role", role)
-                .execute()
-            )
-            if cache.data:
-                all_jobs = cache.data[0].get("results", [])
-                # Recalculate match_pct against current skills then take top 3
-                from services.jobs_service import _calculate_match_pct
-                for job in all_jobs:
-                    job["match_pct"] = _calculate_match_pct(
-                        job.get("description_snippet", ""), skill_scores
-                    )
-                all_jobs.sort(key=lambda j: j["match_pct"], reverse=True)
-                top_internships = [
-                    {
-                        "job_id": j.get("job_id", ""),
-                        "title": j.get("title", ""),
-                        "company": j.get("company", ""),
-                        "location": j.get("location", ""),
-                        "is_remote": j.get("is_remote", False),
-                        "match_pct": j.get("match_pct", 0),
-                        "apply_url": j.get("apply_url", ""),
-                    }
-                    for j in all_jobs[:3]
-                ]
+            cached = await get_jobs_with_cache(user_id, allow_fetch=False)
+            top_internships = [
+                {
+                    "job_id": j.get("job_id", ""),
+                    "title": j.get("title", ""),
+                    "company": j.get("company", ""),
+                    "location": j.get("location", ""),
+                    "is_remote": j.get("is_remote", False),
+                    "match_pct": j.get("match_pct", 0),
+                    "apply_url": j.get("apply_url", ""),
+                }
+                for j in cached.get("jobs", [])[:3]
+            ]
         except Exception:
-            # Jobs cache fetch failing should never break the dashboard
             top_internships = []
+
+    activity = await _activity_summary(user_id, active_steps)
 
     return {
         "user": user_data,
         "active_project": active_project,
         "top_internships": top_internships,
+        "activity": activity,
         "scanner_completed": profile.get("scanner_completed", False),
     }

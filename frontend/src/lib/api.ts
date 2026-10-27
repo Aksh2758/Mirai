@@ -1,4 +1,4 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { supabase } from './supabaseClient'
 import type { 
   GithubData, 
   ExtractedPdfData, 
@@ -11,12 +11,9 @@ import type {
   DashboardSummary,
   RoadmapStep,
   CopilotMessage,
-  TechRadarPostsResponse,
-  TechRadarPost,
-  CreateTechRadarPostRequest,
-  GroomingLabResponse,
-  GroomingLabKey,
-  GroomingReadinessPlan,
+  // TechRadarPostsResponse,
+  // TechRadarPost,
+  // CreateTechRadarPostRequest,
   DiscoveryHubResponse,
   HackathonsResponse,
   StudioFileRecord,
@@ -28,10 +25,6 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 // ─── Generic fetch wrapper with Auth ──────────────────────────────────────────
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
   const { data: { session } } = await supabase.auth.getSession()
   
   const headers = new Headers(init?.headers)
@@ -229,10 +222,6 @@ export async function runPSIAnalysis(projectId: string): Promise<PsiResult> {
  * psiScore is optional — pass it if PSI was run so the LinkedIn post can mention it.
  */
 export async function deployProject(projectId: string, psiScore?: number): Promise<Response> {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
   const { data: { session } } = await supabase.auth.getSession()
 
   const res = await fetch(`${BASE_URL}/studio/deploy`, {
@@ -279,58 +268,28 @@ export async function fetchDashboardSummary(): Promise<DashboardSummary> {
 
 // ─── TECH RADAR ───────────────────────────────────────────────────────────────
 
-export async function fetchTechRadarPosts(mode?: string, options: { limit?: number; offset?: number } = {}): Promise<TechRadarPostsResponse> {
-  const params = new URLSearchParams()
-  if (mode) params.set('mode', mode)
-  if (options.limit) params.set('limit', String(options.limit))
-  if (options.offset) params.set('offset', String(options.offset))
-  const query = params.toString() ? `?${params.toString()}` : ''
-  return request<TechRadarPostsResponse>(`/tech-radar/posts${query}`)
-}
+// export async function fetchTechRadarPosts(mode?: string, options: { limit?: number; offset?: number } = {}): Promise<TechRadarPostsResponse> {
+//   const params = new URLSearchParams()
+//   if (mode) params.set('mode', mode)
+//   if (options.limit) params.set('limit', String(options.limit))
+//   if (options.offset) params.set('offset', String(options.offset))
+//   const query = params.toString() ? `?${params.toString()}` : ''
+//   return request<TechRadarPostsResponse>(`/tech-radar/posts${query}`)
+// }
 
-export async function createTechRadarPost(payload: CreateTechRadarPostRequest): Promise<TechRadarPost> {
-  return request<TechRadarPost>('/tech-radar/posts', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
+// export async function createTechRadarPost(payload: CreateTechRadarPostRequest): Promise<TechRadarPost> {
+//   return request<TechRadarPost>('/tech-radar/posts', {
+//     method: 'POST',
+//     body: JSON.stringify(payload),
+//   })
+// }
 
-export async function connectToTechRadarPost(postId: string, message?: string): Promise<{ ok: boolean; status: string }> {
-  return request<{ ok: boolean; status: string }>(`/tech-radar/posts/${postId}/connect`, {
-    method: 'POST',
-    body: JSON.stringify({ message: message || '' }),
-  })
-}
-
-// ─── GROOMING LAB ─────────────────────────────────────────────────────────────
-
-export async function fetchGroomingLab(): Promise<GroomingLabResponse> {
-  return request<GroomingLabResponse>('/grooming/lab')
-}
-
-export async function generateResumeBullets(payload: {
-  target_role: string
-  project_name: string
-  tech_stack: string[]
-}): Promise<{ bullets: string[] }> {
-  return request<{ bullets: string[] }>('/grooming/resume-bullets', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function saveReadinessPlan(payload: {
-  target_role: string
-  project_name: string
-  focus_area: GroomingLabKey
-  notes?: string
-  generated_bullets: string[]
-}): Promise<{ ok: boolean; plan: GroomingReadinessPlan }> {
-  return request<{ ok: boolean; plan: GroomingReadinessPlan }>('/grooming/readiness-plan', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
+// export async function connectToTechRadarPost(postId: string, message?: string): Promise<{ ok: boolean; status: string }> {
+//   return request<{ ok: boolean; status: string }>(`/tech-radar/posts/${postId}/connect`, {
+//     method: 'POST',
+//     body: JSON.stringify({ message: message || '' }),
+//   })
+// }
 
 // ─── DISCOVERY HUB ────────────────────────────────────────────────────────────
 
@@ -355,3 +314,34 @@ export async function fetchHackathons(options: {
   const query = params.toString() ? `?${params.toString()}` : ''
   return request<HackathonsResponse>(`/discovery/hackathons${query}`)
 }
+
+
+// ─── GROOMING LAB ─────────────────────────────────────────────────────────────
+
+// export async function fetchGroomingLab(): Promise<GroomingLabResponse> {
+//   return request<GroomingLabResponse>('/grooming/lab')
+// }
+
+// export async function generateResumeBullets(payload: {
+//   target_role: string
+//   project_name: string
+//   tech_stack: string[]
+// }): Promise<{ bullets: string[] }> {
+//   return request<{ bullets: string[] }>('/grooming/resume-bullets', {
+//     method: 'POST',
+//     body: JSON.stringify(payload),
+//   })
+// }
+
+// export async function saveReadinessPlan(payload: {
+//   target_role: string
+//   project_name: string
+//   focus_area: GroomingLabKey
+//   notes?: string
+//   generated_bullets: string[]
+// }): Promise<{ ok: boolean; plan: GroomingReadinessPlan }> {
+//   return request<{ ok: boolean; plan: GroomingReadinessPlan }>('/grooming/readiness-plan', {
+//     method: 'POST',
+//     body: JSON.stringify(payload),
+//   })
+// }

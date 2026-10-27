@@ -105,7 +105,9 @@ export default function InternshipsPage() {
   }, [data, durationFilter, locationFilter, minMatch, minStipend, sortMode, stackFilter, workFilter])
 
   const topMatch = filtered[0]
-  const cacheLabel = data?.cached ? `Cached ${data.cache_age_hours}h ago` : 'Fresh JSearch/RapidAPI response'
+  const cacheLabel = data?.cached
+    ? (data.stale ? `Saved results from ${data.cache_age_hours}h ago · refreshing in the background` : `Updated ${data.cache_age_hours}h ago`)
+    : 'Just fetched live'
 
   if (loading) {
     return (
@@ -124,7 +126,7 @@ export default function InternshipsPage() {
       <main style={{ marginLeft: 224, ...pageStyle }}>
         {/* ── HERO ── */}
       <section style={heroStyle}>
-        <button onClick={() => router.push('/dashboard')} style={backButtonStyle}>← Dashboard</button>
+        {/* <button onClick={() => router.push('/dashboard')} style={backButtonStyle}>← Dashboard</button> */}
         <div style={eyebrowStyle}>Nirmaan · Internships</div>
         <h1 style={titleStyle}>Find internships that fit where you are — and where you&apos;re headed.</h1>
         <p style={leadStyle}>

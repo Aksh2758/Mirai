@@ -8,27 +8,28 @@ import { fetchDashboardSummary } from '@/lib/api'
 import type { DashboardSummary } from '@/lib/types'
 import Sidebar from '@/components/dashboard/Sidebar'
 import Topbar from '@/components/dashboard/Topbar'
+import TodaysFocus from '@/components/dashboard/TodaysFocus'
 
 /* ─── palette ─────────────────────────────────────────────── */
 const c = {
-  bg:         '#F3F7F4',
-  ink:        '#0D1B14',
-  muted:      '#5C6B63',
-  card:       '#FFFFFF',
-  line:       '#E3EAE5',
-  soft:       '#EAF3EE',
-  green:      '#1A9D5A',
-  greenBright:'#2FBF71',
-  heroStart:  '#0B2219',
-  heroEnd:    '#0E3328',
-  accent:     '#52D273',
+  bg: '#F3F7F4',
+  ink: '#0D1B14',
+  muted: '#5C6B63',
+  card: '#FFFFFF',
+  line: '#E3EAE5',
+  soft: '#EAF3EE',
+  green: '#1A9D5A',
+  greenBright: '#2FBF71',
+  heroStart: '#0B2219',
+  heroEnd: '#0E3328',
+  accent: '#52D273',
 }
 
-type Job     = DashboardSummary['top_internships'][number]
+type Job = DashboardSummary['top_internships'][number]
 
 /* ─── helpers ─────────────────────────────────────────────── */
 function getInitials(name: string, email: string) {
-  const src   = name || email || 'AK'
+  const src = name || email || 'AK'
   const parts = src.replace(/[^a-zA-Z\s]/g, ' ').trim().split(/\s+/).filter(Boolean)
   if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
   return src.slice(0, 2).toUpperCase()
@@ -36,10 +37,10 @@ function getInitials(name: string, email: string) {
 
 /* ─── page ────────────────────────────────────────────────── */
 export default function DashboardPage() {
-  const router  = useRouter()
-  const [data, setData]       = useState<DashboardSummary | null>(null)
+  const router = useRouter()
+  const [data, setData] = useState<DashboardSummary | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -59,23 +60,25 @@ export default function DashboardPage() {
   }, [router])
 
   if (loading) return <Centered text="Loading your dashboard…" />
-  if (error)   return <Centered text={`Could not load: ${error}`} action={<button onClick={() => window.location.reload()} style={retryBtn}>Retry</button>} />
-  if (!data)   return null
+  if (error) return <Centered text={`Could not load: ${error}`} action={<button onClick={() => window.location.reload()} style={retryBtn}>Retry</button>} />
+  if (!data) return null
 
   const displayName = data.user.full_name || data.user.email?.split('@')[0] || 'there'
-  const initials    = getInitials(displayName, data.user.email)
-  const project     = data.active_project
+  const initials = getInitials(displayName, data.user.email)
+  const project = data.active_project
   const jobs: Job[] = data.top_internships || []
-  const pct         = project ? Math.min(project.progress_pct, 100) : 0
-  const stack       = project?.tech_stack || []
-  const todo        = project?.current_step_todo?.slice(0, 3) || []
-  const focus       = todo.length ? todo : ['Review your roadmap step', 'Continue building in Studio', 'Run a final PSI check']
-  const goStudio    = () => router.push(project ? `/studio/${project.id}` : '/scanner')
+  const pct = project ? Math.min(project.progress_pct, 100) : 0
+  const stack = project?.tech_stack || []
+  const todo = project?.current_step_todo?.slice(0, 3) || []
+  const goStudio = () => router.push(project ? `/studio/${project.id}` : '/scanner')
+  const weekActivity = data.activity?.week_activity ?? [false, false, false, false, false, false, false]
+  const streakDays = data.activity?.streak_days ?? 0
+  const todayIndex = data.activity?.today_index ?? -1
 
   // skill scores for career readiness sidebar
   const skillEntries = Object.values(data.user.skill_scores || {})
-  const topSkills    = skillEntries.map(s => s.label).slice(0, 6)
-  const avgScore     = skillEntries.length
+  const topSkills = skillEntries.map(s => s.label).slice(0, 6)
+  const avgScore = skillEntries.length
     ? Math.round(skillEntries.reduce((a, b) => a + b.score, 0) / skillEntries.length)
     : pct
 
@@ -147,65 +150,31 @@ export default function DashboardPage() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
               {/* Today's Focus */}
-              <Card style={{ padding: 22 }}>
-                <div style={cardHeaderRow}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {/* <span style={{ fontSize: 18 }}>📋</span> */}
-                    <span style={sectionTitle}>Today&apos;s Focus</span>
-                  </div>
-                  <span style={pillGreen}>{1} of {focus.length} Done</span>
-                </div>
-                <p style={{ fontSize: 12, color: c.muted, margin: '8px 0 16px', lineHeight: 1.5 }}>
-                  Key execution tasks for your {data.user.role || 'project'} sprint today.
-                </p>
-
-                <div style={{ display: 'grid', gap: 10 }}>
-                  {focus.map((task, i) => (
-                    <div key={`focus-${i}`} style={focusRow}>
-                      <div style={{ ...focusCheck, ...(i === 0 ? focusCheckDone : {}) }}>
-                        {i === 0 && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{
-                          fontSize: 13, fontWeight: 600,
-                          color: i === 0 ? c.muted : c.ink,
-                          textDecoration: i === 0 ? 'line-through' : 'none',
-                          lineHeight: 1.3,
-                        }}>
-                          {task}
-                        </div>
-                        {project && (
-                          <div style={{ fontSize: 11, color: c.muted, marginTop: 3 }}>
-                            {project.title}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${c.line}`, paddingTop: 14 }}>
-                  <span style={{ fontSize: 11.5, color: c.muted }}>Next sprint sync in 4 hours</span>
-                  <button onClick={goStudio} style={linkBtnStyle}>+ Add Custom Task</button>
-                </div>
-              </Card>
+              <TodaysFocus
+                projectId={project?.id}
+                projectTitle={project?.title}
+                role={data.user.role}
+                buildTasks={todo.length ? todo : ['Continue your next roadmap step in Studio']}
+                jobs={jobs}
+                onNavigate={(href) => router.push(href)}
+              />
 
               {/* Active Applications */}
               <Card style={{ padding: 22 }}>
                 <div style={cardHeaderRow}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {/* <span style={{ fontSize: 18 }}>💼</span> */}
-                    <span style={sectionTitle}>Active Applications</span>
+                    <span style={sectionTitle}>Top Matches</span>
                   </div>
                   <button onClick={() => router.push('/discover/internships')} style={linkBtnStyle}>View All</button>
                 </div>
                 <p style={{ fontSize: 12, color: c.muted, margin: '8px 0 16px', lineHeight: 1.5 }}>
-                  Roles you have bookmarked or submitted applications for.
+                  Fresh internships ranked against your skills.
                 </p>
 
                 {jobs.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '24px 0', color: c.muted, fontSize: 13 }}>
-                    No active applications yet.{' '}
+                    No matches yet.{' '}
                     <button onClick={() => router.push('/discover/internships')} style={linkBtnStyle}>Browse internships →</button>
                   </div>
                 ) : (
@@ -218,8 +187,8 @@ export default function DashboardPage() {
                             {job.company} · {job.is_remote ? 'Remote' : job.location}
                           </div>
                         </div>
-                        <span style={i === 0 ? pillReview : i === 1 ? pillApplied : pillUpcoming}>
-                          {i === 0 ? 'In Review' : i === 1 ? 'Applied' : `${job.match_pct}% Match`}
+                        <span style={job.match_pct >= 70 ? pillApplied : pillUpcoming}>
+                          {job.match_pct}% Match
                         </span>
                       </div>
                     ))}
@@ -229,12 +198,12 @@ export default function DashboardPage() {
                 <div style={{ marginTop: 16, borderTop: `1px solid ${c.line}`, paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   {jobs.length > 0 && (
                     <span style={{ fontSize: 12, color: c.ink }}>
-                      Resume Match Rate:{' '}
+                      Best match:{' '}
                       <strong style={{ color: c.green }}>{jobs[0].match_pct}%</strong>
                     </span>
                   )}
                   <button onClick={() => router.push('/discover/internships')} style={linkBtnStyle}>
-                    Manage Pipeline →
+                    See all →
                   </button>
                 </div>
               </Card>
@@ -328,14 +297,16 @@ export default function DashboardPage() {
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{data.user.role || 'Project Builder'}</div>
                   <div style={{ fontSize: 12, color: c.muted, lineHeight: 1.5 }}>
-                    {skillEntries.filter(s => s.score >= 70).length} of {Math.max(skillEntries.length, 12)} core competencies acquired
+                    {skillEntries.length > 0
+                      ? `${skillEntries.filter(s => s.score >= 70).length} of ${skillEntries.length} tracked skills at 70%+`
+                      : 'Run the scanner to see your skill levels'}
                   </div>
                 </div>
               </div>
 
               {topSkills.length > 0 && (
                 <>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: c.muted, marginBottom: 10 }}>Top Verified Skills</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: c.muted, marginBottom: 10 }}>Top Skills</div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {topSkills.map((s) => <span key={s} style={skillChip}>{s}</span>)}
                   </div>
@@ -349,8 +320,12 @@ export default function DashboardPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 20 }}>🔥</span>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 800 }}>Active Streak</div>
-                    <div style={{ fontSize: 11, color: c.muted }}>Keep building daily</div>
+                    <div style={{ fontSize: 14, fontWeight: 800 }}>
+                      {streakDays > 0 ? `${streakDays}-day streak` : 'No streak yet'}
+                    </div>
+                    <div style={{ fontSize: 11, color: c.muted }}>
+                      {streakDays > 0 ? 'Saving or running code counts' : 'Save or run code in Studio to start one'}
+                    </div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -361,15 +336,16 @@ export default function DashboardPage() {
 
               {/* Day dots */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 5, marginBottom: 14 }}>
-                {['M','T','W','T','F','S','S'].map((d, i) => (
+                {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
                   <div key={`day-${i}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                     <div style={{ fontSize: 10, color: c.muted, fontWeight: 600 }}>{d}</div>
                     <div style={{
                       width: 26, height: 26, borderRadius: '50%',
-                      background: i < 4 ? c.green : 'rgba(0,0,0,0.06)',
+                      background: weekActivity[i] ? c.green : 'rgba(0,0,0,0.06)',
+                      outline: i === todayIndex ? `2px solid ${c.green}` : 'none', outlineOffset: 2,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      {i < 4 ? (
+                      {weekActivity[i] ? (
                         <span style={{ color: '#fff', fontSize: 11 }}>✓</span>
                       ) : (
                         <span style={{ color: c.muted, fontSize: 11 }}>·</span>
@@ -383,7 +359,7 @@ export default function DashboardPage() {
               <div style={deadlineNotice}>
                 <span style={{ fontSize: 16 }}>⏰</span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#B45309' }}>Upcoming Deadline:</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#B45309' }}>Up next:</div>
                   <div style={{ fontSize: 11.5, color: '#92400E', marginTop: 2, lineHeight: 1.4 }}>
                     {project
                       ? `Complete Step ${project.steps_done + 1} of ${project.title}`
@@ -486,16 +462,16 @@ const heroWrap: CSSProperties = {
   borderRadius: 18, padding: '26px 30px', position: 'relative', overflow: 'hidden',
 }
 const heroBadgeRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }
-const sprintDot: CSSProperties   = { width: 8, height: 8, borderRadius: '50%', background: c.accent, boxShadow: `0 0 6px ${c.accent}` }
+const sprintDot: CSSProperties = { width: 8, height: 8, borderRadius: '50%', background: c.accent, boxShadow: `0 0 6px ${c.accent}` }
 const sprintLabel: CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: 1.4, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase' }
-const heroTitle: CSSProperties   = { margin: 0, fontSize: 28, fontWeight: 900, color: '#fff', letterSpacing: -0.6, lineHeight: 1.15 }
-const heroSub: CSSProperties     = { margin: '10px 0 0', fontSize: 13.5, color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }
-const codeChip: CSSProperties    = { background: 'rgba(255,255,255,0.12)', color: c.accent, padding: '2px 7px', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }
+const heroTitle: CSSProperties = { margin: 0, fontSize: 28, fontWeight: 900, color: '#fff', letterSpacing: -0.6, lineHeight: 1.15 }
+const heroSub: CSSProperties = { margin: '10px 0 0', fontSize: 13.5, color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }
+const codeChip: CSSProperties = { background: 'rgba(255,255,255,0.12)', color: c.accent, padding: '2px 7px', borderRadius: 6, fontSize: 12, fontFamily: 'monospace' }
 const heroPrimBtn: CSSProperties = {
   background: c.accent, color: '#041A0C', border: 'none', borderRadius: 999,
   padding: '11px 22px', fontSize: 13.5, fontWeight: 800, cursor: 'pointer',
 }
-const heroSecBtn: CSSProperties  = {
+const heroSecBtn: CSSProperties = {
   background: 'rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.85)',
   border: '1px solid rgba(255,255,255,0.15)', borderRadius: 999,
   padding: '11px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
@@ -504,33 +480,27 @@ const heroProgressCard: CSSProperties = {
   width: 200, flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)',
   borderRadius: 14, padding: 18, background: 'rgba(255,255,255,0.04)',
 }
-const cardHeaderRow: CSSProperties  = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
-const sectionTitle: CSSProperties   = { fontSize: 16, fontWeight: 800, letterSpacing: -0.2 }
-const pillGreen: CSSProperties      = { background: '#DCFCE7', color: '#166534', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999 }
-const pillActiveTrack: CSSProperties= { background: '#D1FAE5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999 }
-const pillReview: CSSProperties     = { background: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' as const }
-const pillApplied: CSSProperties    = { background: '#DBEAFE', color: '#1E40AF', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' as const }
-const pillUpcoming: CSSProperties   = { background: '#F3E8FF', color: '#6B21A8', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' as const }
+const cardHeaderRow: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+const sectionTitle: CSSProperties = { fontSize: 16, fontWeight: 800, letterSpacing: -0.2 }
+const pillGreen: CSSProperties = { background: '#DCFCE7', color: '#166534', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999 }
+const pillActiveTrack: CSSProperties = { background: '#D1FAE5', color: '#065F46', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999 }
+const pillReview: CSSProperties = { background: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' as const }
+const pillApplied: CSSProperties = { background: '#DBEAFE', color: '#1E40AF', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' as const }
+const pillUpcoming: CSSProperties = { background: '#F3E8FF', color: '#6B21A8', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' as const }
 
-const focusRow: CSSProperties       = { display: 'flex', gap: 12, alignItems: 'flex-start' }
-const focusCheck: CSSProperties     = {
-  width: 18, height: 18, borderRadius: 5, border: `1.8px solid ${c.green}`,
-  flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff',
-}
-const focusCheckDone: CSSProperties = { background: c.green, borderColor: c.green }
 
-const appRow: CSSProperties         = { display: 'flex', gap: 12, alignItems: 'center', padding: '10px 0' }
-const linkBtnStyle: CSSProperties   = { background: 'transparent', border: 'none', color: c.green, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }
+const appRow: CSSProperties = { display: 'flex', gap: 12, alignItems: 'center', padding: '10px 0' }
+const linkBtnStyle: CSSProperties = { background: 'transparent', border: 'none', color: c.green, fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }
 
-const filterTab: CSSProperties      = {
+const filterTab: CSSProperties = {
   background: '#F3F7F4', border: `1px solid ${c.line}`, borderRadius: 999,
   padding: '6px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', color: c.muted,
 }
-const filterTabActive: CSSProperties= {
+const filterTabActive: CSSProperties = {
   ...filterTab, background: c.green, color: '#fff', border: `1px solid ${c.green}`,
 }
-const skillChip: CSSProperties      = { background: c.soft, color: '#2B5A43', fontSize: 11.5, padding: '4px 11px', borderRadius: 999, fontWeight: 600 }
-const opCardBtn: CSSProperties      = {
+const skillChip: CSSProperties = { background: c.soft, color: '#2B5A43', fontSize: 11.5, padding: '4px 11px', borderRadius: 999, fontWeight: 600 }
+const opCardBtn: CSSProperties = {
   marginTop: 6, background: c.ink, color: '#fff', border: 'none',
   borderRadius: 8, padding: '9px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', textAlign: 'center' as const,
 }
@@ -538,8 +508,8 @@ const deadlineNotice: CSSProperties = {
   background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10,
   padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start',
 }
-const guidingCard: CSSProperties    = {
+const guidingCard: CSSProperties = {
   background: `linear-gradient(135deg, ${c.heroStart} 0%, #1A3D2E 100%)`,
   borderRadius: 16, padding: 22,
 }
-const retryBtn: CSSProperties       = { background: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, cursor: 'pointer' }
+const retryBtn: CSSProperties = { background: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, cursor: 'pointer' }

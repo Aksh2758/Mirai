@@ -235,6 +235,7 @@ export interface JobsResponse {
   jobs: JobListing[]
   role_searched: string         // The role string used to query JSearch
   cached: boolean               // true if response came from Supabase cache
+  stale?: boolean               // cache older than the refresh window; a background refresh is running
   cache_age_hours: number       // How old the cache is. 0 if fresh fetch.
   total: number
 }
@@ -283,10 +284,17 @@ export interface DashboardInternship {
   apply_url: string
 }
 
+export interface DashboardActivity {
+  week_activity: boolean[]   // Monday..Sunday of the current week, true = did something in Studio
+  streak_days: number        // consecutive active days up to today (or yesterday)
+  today_index: number        // 0 = Monday
+}
+
 export interface DashboardSummary {
   user: DashboardUser
   active_project: DashboardProject | null    // null if no project selected yet
   top_internships: DashboardInternship[]     // always 0–3 items, never errors if jobs fail
+  activity?: DashboardActivity               // real Studio activity (saves/runs/steps), IST days
   scanner_completed: boolean
 }
 
@@ -318,51 +326,6 @@ export interface CreateTechRadarPostRequest {
   title: string
   body: string
   tags: string[]
-}
-
-// ─── Grooming Lab ────────────────────────────────────────────────────────────
-
-export type GroomingLabKey = 'resume' | 'mock' | 'aptitude' | 'interview'
-
-export interface GroomingLabItem {
-  key: GroomingLabKey
-  title: string
-  subtitle: string
-  metric: string
-}
-
-export interface GroomingPrepStep {
-  title: string
-  detail: string
-  time: string
-}
-
-export interface GroomingActiveProject {
-  id: string
-  title: string
-  tech_stack: string[]
-  difficulty: string
-}
-
-export interface GroomingReadinessPlan {
-  id: string
-  target_role: string
-  project_name: string
-  focus_area: GroomingLabKey
-  notes: string | null
-  generated_bullets: string[]
-  created_at: string
-  updated_at: string
-}
-
-export interface GroomingLabResponse {
-  target_role: string
-  active_project: GroomingActiveProject | null
-  readiness_score: number
-  labs: GroomingLabItem[]
-  prep_paths: Record<GroomingLabKey, GroomingPrepStep[]>
-  resume_bullets: string[]
-  saved_plan: GroomingReadinessPlan | null
 }
 
 // ─── Discovery Hub ───────────────────────────────────────────────────────────
@@ -417,3 +380,47 @@ export interface DiscoveryHubResponse {
   hackathons_error: string | null
   fetched_at: string
 }
+
+
+export type GroomingLabKey = 'resume' | 'mock' | 'aptitude' | 'interview'
+
+export interface GroomingLabItem {
+  key: GroomingLabKey
+  title: string
+  subtitle: string
+  metric: string
+}
+
+export interface GroomingPrepStep {
+  title: string
+  detail: string
+  time: string
+}
+
+export interface GroomingActiveProject {
+  id: string
+  title: string
+  tech_stack: string[]
+  difficulty: string
+}
+
+// export interface GroomingReadinessPlan {
+//   id: string
+//   target_role: string
+//   project_name: string
+//   focus_area: GroomingLabKey
+//   notes: string | null
+//   generated_bullets: string[]
+//   created_at: string
+//   updated_at: string
+// }
+
+// export interface GroomingLabResponse {
+//   target_role: string
+//   active_project: GroomingActiveProject | null
+//   readiness_score: number
+//   labs: GroomingLabItem[]
+//   prep_paths: Record<GroomingLabKey, GroomingPrepStep[]>
+//   resume_bullets: string[]
+//   saved_plan: GroomingReadinessPlan | null
+// }
