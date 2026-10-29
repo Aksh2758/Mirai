@@ -3,6 +3,9 @@ import json
 from groq import AsyncGroq
 from dotenv import load_dotenv
 
+from services.role_classifier import classify_from_sources, domain_for_family
+from services.market_signals import get_trending_skills
+
 try:
     from google import genai
     from google.genai import types
@@ -111,6 +114,24 @@ async def call_groq_stream(messages: list[dict], system: str):
             yield content
 
 
+# ─── Project rules per domain (moved to module level so the classifier's families can reuse them) ───
+
+DOMAIN_RULES = {
+    "Data/ML": "All 3 projects MUST be data or machine learning projects. Use Python, pandas, scikit-learn, matplotlib, SQL, Jupyter, Streamlit, or FastAPI for serving models. Do NOT suggest web apps with React or Node.js.",
+    "Frontend": "All 3 projects MUST be frontend or UI projects. Use React, Next.js, TypeScript, CSS, Tailwind. Do NOT suggest backend APIs or ML models as the main project.",
+    "Backend": "All 3 projects MUST be backend or API projects. Use FastAPI/Django/Node.js with databases (PostgreSQL/MongoDB), authentication, REST APIs. Do NOT suggest React frontends as the main focus.",
+    "Full Stack": "Projects should be full-stack applications combining frontend + backend. Each project must have both a UI and an API/database layer.",
+    "ML/AI": "All 3 projects MUST be ML or AI projects. Use PyTorch, TensorFlow, HuggingFace, LLMs, computer vision, NLP, or similar. Do NOT suggest basic CRUD apps.",
+    "DevOps": "All 3 projects MUST be DevOps or infrastructure projects. Use Docker, Kubernetes, CI/CD pipelines, cloud services, monitoring. Do NOT suggest regular web apps.",
+    # Added for the classifier's extra families:
+    "Data Engineering": "All 3 projects MUST be data engineering projects: ETL/ELT pipelines, SQL and warehouse modelling, workflow orchestration (Airflow or similar), streaming basics, data-quality checks. Do NOT suggest ML model training or web UIs as the main focus.",
+    "Mobile": "All 3 projects MUST be mobile app projects. Use React Native, Flutter, Kotlin or Swift with a real backend or local storage. Do NOT suggest web-only apps.",
+    "Security": "All 3 projects MUST be defensive or educational security projects: authentication/authorization systems, secure API hardening, log analysis and anomaly detection, vulnerability-scanning of the student's OWN apps. Do NOT suggest tools built to attack third-party systems.",
+}
+
+VALID_LEVELS = ("Beginner", "Intermediate", "Advanced")
+
+
 async def analyze_skill_dna(
     github_data: dict | None,
     pdf_data: dict | None,
@@ -119,12 +140,21 @@ async def analyze_skill_dna(
     """
     The main AI analyzer. Takes any combination of scanner data sources.
     Returns: role, level, pace_factor, skill_scores, summary, and 3 projects.
-    
+
+    PIPELINE (hybrid ML + LLM):
+      1. Build an evidence context from whatever scanner data exists.
+      2. A trained Random Forest predicts the ROLE FAMILY from measurable features
+         (stable classes, not volatile job titles). Skipped gracefully if the model
+         isn't available, in which case the original LLM-only detection runs.
+      3. Trending skills are pulled from the Discovery Hub's live listings.
+      4. The LLM detects level and picks a SPECIFIC, current job title inside the
+         classifier's family (or reasons freely if the classifier is unsure).
+      5. The LLM generates skill scores, summary and 3 level-appropriate,
+         market-aware projects.
+
     CRITICAL RULES FOR THIS FUNCTION:
     - Projects MUST match the detected level exactly (see mapping below)
     - Role detection must be based on EVIDENCE from the data, not generic guessing
-    - If data shows data science skills, return Data Analyst or ML Engineer role
-    - If data shows web skills, return Frontend/Backend/Full Stack role
     - Never mix roles with projects (don't suggest web projects for an ML user)
     """
 
@@ -162,11 +192,80 @@ SELF-REPORTED BACKGROUND:
 
     full_context = "\n".join(context_parts)
 
-    # ─── STEP 2: Detect level BEFORE generating projects ─────────────────────
-    # We use a separate focused prompt to detect level first.
-    # This makes the project suggestions much more accurate.
+    # ─── STEP 2: ML role-family prediction + live market signal ──────────────
+    # rf_result is None if the model files are missing or anything fails;
+    # the code below then behaves exactly like the original LLM-only version.
 
-    level_detection_prompt = f"""You are analyzing a student's technical background to determine their exact skill level.
+    rf_result = classify_from_sources(github_data, pdf_data, manual_data)
+
+    trending = get_trending_skills(limit=12)
+    trending_names = [t["skill"] for t in trending]
+    market_block = ""
+    market_rule = ""
+    if trending_names:
+        market_block = f"""
+CURRENT MARKET SIGNAL (skills most requested across live job/internship listings right now):
+{', '.join(trending_names)}
+"""
+        market_rule = """
+
+8. MARKET RULE: prefer tech stacks that include at least one of the in-demand skills from the CURRENT MARKET SIGNAL for each project, but ONLY where it fits the DOMAIN RULE. Never force an irrelevant technology just to match the signal."""
+
+    # ─── STEP 3: Detect level + specific role BEFORE generating projects ─────
+
+    level_rules = """Determine their level using these STRICT rules:
+- "Beginner": Less than 1 year coding OR fewer than 3 projects OR only knows 1-2 basic languages (Python basics, HTML/CSS only)
+- "Intermediate": 1-3 years OR 3-8 projects OR knows multiple languages and has built at least one working app
+- "Advanced": 3+ years AND 8+ projects AND has deployed real apps AND knows frameworks deeply"""
+
+    if rf_result:
+        top3 = "\n".join(
+            f"  - {c['family']}: {c['probability']:.0%}" for c in rf_result["top_3"]
+        )
+        if rf_result["low_confidence"]:
+            family_instruction = (
+                "The classifier is UNCERTAIN (top probability below 50%). Treat its output only as a hint: "
+                "use the evidence in the student's data to choose the best-fitting family among the top "
+                "candidates (or a sensible hybrid), and name the family you chose in evidence_summary."
+            )
+        else:
+            family_instruction = (
+                f"The classifier is CONFIDENT. detected_role MUST be a specific job title that belongs to the "
+                f"'{rf_result['family']}' family. Do not switch families."
+            )
+        title_market_hint = (
+            " Where it fits the student's evidence, prefer titles that align with the CURRENT MARKET SIGNAL above."
+            if trending_names else ""
+        )
+
+        level_detection_prompt = f"""You are analyzing a student's technical background to determine their exact skill level and a specific job role.
+
+Read this data carefully:
+{full_context}
+
+A trained Random Forest classifier analysed measurable signals from this data and predicted the student's role FAMILY:
+- Predicted family: {rf_result['family']} (confidence {rf_result['confidence']:.0%})
+- Top candidates:
+{top3}
+{family_instruction}
+{market_block}
+{level_rules}
+
+For detected_role: pick ONE specific, currently-used job title within the family (for example "Backend Developer (Go/Rust)" or "Machine Learning Engineer").{title_market_hint} Do not invent exotic titles.
+
+For domain: choose the ONE best match from: {', '.join(DOMAIN_RULES.keys())}.
+
+Return ONLY this JSON. Nothing else. No markdown. No explanation:
+{{
+  "level": "Beginner",
+  "domain": "Backend",
+  "detected_role": "Backend Developer",
+  "experience_years_estimate": 1,
+  "evidence_summary": "One sentence explaining WHY you chose this level and role based on actual evidence from their data"
+}}"""
+    else:
+        # Original LLM-only detection (used when the classifier is unavailable)
+        level_detection_prompt = f"""You are analyzing a student's technical background to determine their exact skill level.
 
 Read this data carefully:
 {full_context}
@@ -183,7 +282,7 @@ Also determine their PRIMARY domain by looking at what technologies dominate the
 - If a mix of frontend + backend → "Full Stack"
 - If mostly TensorFlow/PyTorch/LLM/transformers/deep learning → "ML/AI"
 - If mostly Docker/Kubernetes/AWS/GCP/CI/CD/Linux → "DevOps"
-
+{market_block}
 Return ONLY this JSON. Nothing else. No markdown. No explanation:
 {{
   "level": "Beginner",
@@ -203,13 +302,31 @@ Available roles to pick from (pick the ONE that best matches domain):
 - "Mobile Developer" → if they have React Native/Flutter/Swift/Kotlin"""
 
     level_result = await call_groq_json(level_detection_prompt)
-    
+
     detected_level = level_result.get("level", "Intermediate")
-    detected_domain = level_result.get("domain", "Full Stack")
-    detected_role = level_result.get("detected_role", "Full Stack Developer")
+    if detected_level not in VALID_LEVELS:
+        detected_level = "Intermediate"
+
     evidence_summary = level_result.get("evidence_summary", "")
 
-    # ─── STEP 3: Define project difficulty rules based on detected level ──────
+    # Domain: when the classifier is confident its family decides the project rules
+    # (deterministic, not an LLM guess). Otherwise fall back to the LLM's domain.
+    if rf_result and not rf_result["low_confidence"]:
+        detected_domain = domain_for_family(rf_result["family"], detected_level)
+    else:
+        llm_domain = level_result.get("domain")
+        if llm_domain in DOMAIN_RULES:
+            detected_domain = llm_domain
+        elif rf_result:
+            detected_domain = domain_for_family(rf_result["family"], detected_level)
+        else:
+            detected_domain = "Full Stack"
+
+    detected_role = level_result.get("detected_role") or (
+        rf_result["family"] if rf_result else "Full Stack Developer"
+    )
+
+    # ─── STEP 4: Define project difficulty rules based on detected level ──────
     # CRITICAL: These rules are enforced by the prompt.
     # A Beginner gets: Beginner + Intermediate + Intermediate projects
     # An Intermediate gets: Intermediate + Intermediate + Advanced projects
@@ -240,21 +357,18 @@ Project difficulty MUST follow this rule since the student is ADVANCED:
 - Project 3 (challenge): difficulty = "Advanced" — production-grade complexity
 NEVER suggest Beginner or Intermediate projects to an Advanced user."""
 
-    # ─── STEP 4: Define domain-specific project types ─────────────────────────
+    # ─── STEP 5: Domain-specific project types ────────────────────────────────
     # This prevents suggesting web projects to a data science person, etc.
 
-    domain_rules = {
-        "Data/ML": "All 3 projects MUST be data or machine learning projects. Use Python, pandas, scikit-learn, matplotlib, SQL, Jupyter, Streamlit, or FastAPI for serving models. Do NOT suggest web apps with React or Node.js.",
-        "Frontend": "All 3 projects MUST be frontend or UI projects. Use React, Next.js, TypeScript, CSS, Tailwind. Do NOT suggest backend APIs or ML models as the main project.",
-        "Backend": "All 3 projects MUST be backend or API projects. Use FastAPI/Django/Node.js with databases (PostgreSQL/MongoDB), authentication, REST APIs. Do NOT suggest React frontends as the main focus.",
-        "Full Stack": "Projects should be full-stack applications combining frontend + backend. Each project must have both a UI and an API/database layer.",
-        "ML/AI": "All 3 projects MUST be ML or AI projects. Use PyTorch, TensorFlow, HuggingFace, LLMs, computer vision, NLP, or similar. Do NOT suggest basic CRUD apps.",
-        "DevOps": "All 3 projects MUST be DevOps or infrastructure projects. Use Docker, Kubernetes, CI/CD pipelines, cloud services, monitoring. Do NOT suggest regular web apps.",
-    }
+    domain_instruction = DOMAIN_RULES.get(detected_domain, DOMAIN_RULES["Full Stack"])
 
-    domain_instruction = domain_rules.get(detected_domain, domain_rules["Full Stack"])
+    # ─── STEP 6: Generate the full analyzer response ──────────────────────────
 
-    # ─── STEP 5: Generate the full analyzer response ──────────────────────────
+    classifier_line = ""
+    if rf_result:
+        classifier_line = (
+            f"\n- Classifier verdict: {rf_result['family']} ({rf_result['confidence']:.0%} confidence)"
+        )
 
     main_prompt = f"""You are a senior technical mentor at a coding bootcamp. 
 You have analyzed a student's background and now must give them personalized guidance.
@@ -266,8 +380,8 @@ YOUR ANALYSIS SO FAR:
 - Detected role: {detected_role}
 - Detected level: {detected_level}
 - Detected domain: {detected_domain}
-- Evidence: {evidence_summary}
-
+- Evidence: {evidence_summary}{classifier_line}
+{market_block}
 Now generate the complete analysis response.
 
 Return ONLY this JSON. No markdown. No explanation. Just raw JSON:
@@ -331,11 +445,11 @@ STRICT RULES — violating any of these is wrong:
    - Intermediate project: 20-50 hours  
    - Advanced project: 50-120 hours
 
-7. projects must be genuinely different from each other — different tech stacks, different problem domains"""
+7. projects must be genuinely different from each other — different tech stacks, different problem domains{market_rule}"""
 
     main_result = await call_groq_json(main_prompt)
 
-    # ─── STEP 6: Validate the response before returning ───────────────────────
+    # ─── STEP 7: Validate the response before returning ───────────────────────
     # If Groq returned garbage structure, raise an error with details
 
     if "skill_dna" not in main_result:
@@ -353,5 +467,17 @@ STRICT RULES — violating any of these is wrong:
         for field in required_project_fields:
             if field not in project:
                 raise ValueError(f"Project {i+1} is missing field '{field}'")
+
+    # ─── STEP 8: Attach the model verdict and market signal for the frontend ──
+    # role and level come from the detection step so they can't drift in the
+    # second LLM call. The extra fields are additive; existing frontend code
+    # that ignores them keeps working.
+
+    skill_dna = main_result["skill_dna"]
+    skill_dna["role"] = detected_role
+    skill_dna["level"] = detected_level
+    skill_dna["domain"] = detected_domain
+    skill_dna["role_model"] = rf_result            # None if the classifier wasn't used
+    skill_dna["market_skills"] = trending          # [] if no listings were available
 
     return main_result

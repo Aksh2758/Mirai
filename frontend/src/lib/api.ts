@@ -14,9 +14,6 @@ import type {
   TechRadarPostsResponse,
   TechRadarPost,
   CreateTechRadarPostRequest,
-  GroomingLabResponse,
-  GroomingLabKey,
-  GroomingReadinessPlan,
   DiscoveryHubResponse,
   HackathonsResponse,
   StudioFileRecord,
@@ -346,36 +343,6 @@ export async function connectToTechRadarPost(postId: string, message?: string): 
   return request<{ ok: boolean; status: string }>(`/tech-radar/posts/${postId}/connect`, {
     method: 'POST',
     body: JSON.stringify({ message: message || '' }),
-  })
-}
-
-// ─── GROOMING LAB ─────────────────────────────────────────────────────────────
-
-export async function fetchGroomingLab(): Promise<GroomingLabResponse> {
-  return request<GroomingLabResponse>('/grooming/lab')
-}
-
-export async function generateResumeBullets(payload: {
-  target_role: string
-  project_name: string
-  tech_stack: string[]
-}): Promise<{ bullets: string[] }> {
-  return request<{ bullets: string[] }>('/grooming/resume-bullets', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function saveReadinessPlan(payload: {
-  target_role: string
-  project_name: string
-  focus_area: GroomingLabKey
-  notes?: string
-  generated_bullets: string[]
-}): Promise<{ ok: boolean; plan: GroomingReadinessPlan }> {
-  return request<{ ok: boolean; plan: GroomingReadinessPlan }>('/grooming/readiness-plan', {
-    method: 'POST',
-    body: JSON.stringify(payload),
   })
 }
 
