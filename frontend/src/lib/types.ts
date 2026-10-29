@@ -38,6 +38,7 @@ export interface GithubData {
 
 export interface ExtractedPdfData {
   raw_text: string
+  learning_goal?: string
   detected_skills: string[]
   detected_experience_years: number
   detected_job_titles: string[]

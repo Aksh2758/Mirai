@@ -1,4 +1,4 @@
-// Hard-coded Studio projects. Folders are `children` nodes; files carry their starter `content`.
+// File and folder helpers used for workspaces opened from the user's computer.
 
 export type FileNode = { type: "file"; name: string; content: string }
 export type FolderNode = { type: "folder"; name: string; children: TreeNode[] }
@@ -15,47 +15,6 @@ export interface StudioProject {
 
 const file = (name: string, content: string): FileNode => ({ type: "file", name, content })
 const folder = (name: string, children: TreeNode[]): FolderNode => ({ type: "folder", name, children })
-
-export const STUDIO_PROJECTS: StudioProject[] = [
-  {
-    id: "playground",
-    name: "Playground",
-    description: "One starter file per language",
-    tree: [
-      file("hello.py", 'print("Mirai Subsystem: Python Runtime Connected.")\n'),
-      file("app.js", 'console.log("Mirai Engine: Unified Logic Stream Attached.");\n'),
-      file("app.ts", 'const engine: string = "Mirai Core";\nconsole.log(`Running on ${engine} v3.0`);\n'),
-      file("main.cpp", '#include <iostream>\n\nint main() {\n    std::cout << "Hello from Mirai" << std::endl;\n    return 0;\n}\n'),
-      file("Main.java", 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Mirai");\n    }\n}\n'),
-      file("index.html", '<html>\n  <body style="background:#011627;color:white;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">\n    <h1>Studio 3.0</h1>\n  </body>\n</html>\n'),
-    ],
-  },
-  {
-    id: "algorithms",
-    name: "Algorithms",
-    description: "Classic DSA practice in Python",
-    tree: [
-      folder("sorting", [
-        file("bubble_sort.py", "def bubble_sort(items):\n    items = list(items)\n    for i in range(len(items)):\n        for j in range(len(items) - i - 1):\n            if items[j] > items[j + 1]:\n                items[j], items[j + 1] = items[j + 1], items[j]\n    return items\n\nprint(bubble_sort([5, 2, 9, 1, 7]))\n"),
-        file("README.md", "# Sorting\n\nImplement and compare sorting algorithms.\n"),
-      ]),
-      folder("searching", [
-        file("binary_search.py", "def binary_search(items, target):\n    lo, hi = 0, len(items) - 1\n    while lo <= hi:\n        mid = (lo + hi) // 2\n        if items[mid] == target:\n            return mid\n        if items[mid] < target:\n            lo = mid + 1\n        else:\n            hi = mid - 1\n    return -1\n\nprint(binary_search([1, 3, 5, 7, 9], 7))\n"),
-      ]),
-      file("main.py", 'print("Pick an algorithm from the sorting or searching folders.")\n'),
-    ],
-  },
-  {
-    id: "web-portfolio",
-    name: "Web Portfolio",
-    description: "HTML, CSS and JS starter",
-    tree: [
-      file("index.html", '<html>\n  <body style="font-family:sans-serif;background:#0b1020;color:#e2e8f0;padding:2rem">\n    <h1>My Portfolio</h1>\n    <p>Edit me in the Studio.</p>\n  </body>\n</html>\n'),
-      folder("css", [file("style.css", "body {\n  margin: 0;\n  font-family: sans-serif;\n}\n")]),
-      folder("js", [file("app.js", 'console.log("Portfolio loaded");\n')]),
-    ],
-  },
-]
 
 const LANGUAGE_BY_EXT: Record<string, string> = {
   py: "python",
@@ -113,32 +72,35 @@ const BINARY_EXTS = new Set([
   "exe", "dll", "so", "dylib", "class", "jar", "o", "obj", "bin", "woff", "woff2", "ttf", "otf", "eot",
   "mp3", "mp4", "mov", "avi", "wav", "pyc", "lock", "map",
 ])
-const MAX_FILES = 500
-const MAX_FILE_BYTES = 200_000
+const MAX_FILES = 250
+const MAX_FILE_BYTES = 120_000
+const MAX_FOLDER_DEPTH = 10
 
 export function canOpenLocalFolder(): boolean {
   return typeof window !== "undefined" && "showDirectoryPicker" in window
 }
 
-async function readDirectory(dir: any, budget: { files: number }): Promise<TreeNode[]> {
-  const nodes: TreeNode[] = []
-  for await (const [name, handle] of dir.entries()) {
+async function readDirectory(dir: any, budget: { files: number }, depth = 0): Promise<TreeNode[]> {
+  if (depth > MAX_FOLDER_DEPTH) return []
+  const entries: Array<[string, any]> = []
+  for await (const entry of dir.entries()) entries.push(entry)
+  // Reading independent files in parallel makes opening ordinary source
+  // folders much quicker than waiting on each disk handle one at a time.
+  const nodes = await Promise.all(entries.map(async ([name, handle]): Promise<TreeNode | null> => {
     if (handle.kind === "directory") {
-      if (SKIP_DIRS.has(name)) continue
-      nodes.push(folder(name, await readDirectory(handle, budget)))
-    } else {
-      // Keep any text file; skip known binaries, oversized files and anything with NUL bytes
-      const ext = name.split(".").pop()?.toLowerCase() ?? ""
-      if (BINARY_EXTS.has(ext) || budget.files <= 0) continue
-      const f: File = await handle.getFile()
-      if (f.size > MAX_FILE_BYTES) continue
-      const text = await f.text()
-      if (text.slice(0, 2000).includes("\u0000")) continue
-      budget.files--
-      nodes.push(file(name, text))
+      if (SKIP_DIRS.has(name)) return null
+      return folder(name, await readDirectory(handle, budget, depth + 1))
     }
-  }
-  return nodes
+    const ext = name.split(".").pop()?.toLowerCase() ?? ""
+    if (BINARY_EXTS.has(ext) || budget.files <= 0) return null
+    budget.files--
+    const f: File = await handle.getFile()
+    if (f.size > MAX_FILE_BYTES) return null
+    const text = await f.text()
+    if (text.slice(0, 2000).includes("\u0000")) return null
+    return file(name, text)
+  }))
+  return nodes.filter((node): node is TreeNode => node !== null)
 }
 
 /** Shows the browser's folder picker and returns the folder as a project, or null if cancelled. */
@@ -224,4 +186,23 @@ export async function saveToDisk(root: any, path: string, content: string) {
   const name = parts.pop()!
   const dir = await dirAt(root, parts.join("/"))
   await writeText(await dir.getFileHandle(name, { create: true }), content)
+}
+
+/** Save a virtual workspace file to the user's computer. Uses the native Save As
+ * picker where available and a normal browser download as a fallback. */
+export async function saveFileToComputer(path: string, content: string) {
+  const fileName = path.split("/").pop() || "untitled.txt"
+  const picker = (window as any).showSaveFilePicker
+  if (picker) {
+    const handle = await picker({ suggestedName: fileName })
+    await writeText(handle, content)
+    return
+  }
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = fileName
+  anchor.click()
+  URL.revokeObjectURL(url)
 }

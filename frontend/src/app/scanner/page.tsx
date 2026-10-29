@@ -71,6 +71,16 @@ export default function ScannerPage() {
         pdf_data: pdfData,
         manual_data: manualData,
       })
+      if (manualData?.learning_goal) {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          try {
+            const key = `nirmaan-roadmap:${session.user.email || 'user'}`
+            const saved = JSON.parse(localStorage.getItem(key) || '{}')
+            localStorage.setItem(key, JSON.stringify({ ...saved, goal: manualData.learning_goal }))
+          } catch { /* analysis must still complete if local storage is unavailable */ }
+        }
+      }
       sessionStorage.setItem('analyzerResult', JSON.stringify(result))
       router.push('/scanner/results')
     } catch (e: any) {

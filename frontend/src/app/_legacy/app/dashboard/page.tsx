@@ -109,7 +109,7 @@ export default function DashboardPage() {
       <main style={mainStyle}>
         <div style={topActionBarStyle}>
           <button
-            onClick={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')}
+            onClick={() => data.active_project ? router.push(`/studio?projectId=${encodeURIComponent(data.active_project.id)}`) : router.push('/scanner')}
             style={deployButtonStyle}
           >
             {data.active_project ? 'Open Studio' : 'Start Project'}
@@ -132,9 +132,9 @@ export default function DashboardPage() {
         </section>
 
         <section style={gridStyle}>
-          <TodoCard project={data.active_project} onEdit={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
+          <TodoCard project={data.active_project} onEdit={() => data.active_project ? router.push(`/studio?projectId=${encodeURIComponent(data.active_project.id)}`) : router.push('/scanner')} />
           <TopMatchesCard jobs={data.top_internships} onViewAll={() => router.push('/internships')} />
-          <CurrentProjectCard project={data.active_project} onOpen={() => data.active_project ? router.push(`/studio/${data.active_project.id}`) : router.push('/scanner')} />
+          <CurrentProjectCard project={data.active_project} onOpen={() => data.active_project ? router.push(`/studio?projectId=${encodeURIComponent(data.active_project.id)}`) : router.push('/scanner')} />
           <HackathonsCard onOpen={() => router.push('/hackathons')} />
           <GroomingLabCard onOpen={() => router.push('/grooming')} />
           <DiscoveryHubCard onOpen={() => router.push('/discover')} />

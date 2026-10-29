@@ -10,6 +10,8 @@ interface AIAssistantSidebarProps {
   code: string;
   language: string;
   fileName: string | null;
+  learningContext?: string;
+  onApplyCode?: (code: string) => void;
 }
 
 // Idle pause before the copilot offers a short nudge
@@ -23,7 +25,7 @@ const EXPLAIN_AUTOHIDE_MS = 15000
 
 type ExplainCard = { line: number; concept: string; text: string; loading: boolean }
 
-export default function AIAssistantSidebar({ code, language, fileName }: AIAssistantSidebarProps) {
+export default function AIAssistantSidebar({ code, language, fileName, learningContext, onApplyCode }: AIAssistantSidebarProps) {
   const { struggleScore, personality, addAgentInsight, lastActionLine, lastActionTimestamp, agentInsights } = useLabStore()
   const [input, setInput] = useState("")
   const [isThinking, setIsThinking] = useState(false)
@@ -37,6 +39,11 @@ export default function AIAssistantSidebar({ code, language, fileName }: AIAssis
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [chatHistory, currentStream])
+
+  useEffect(() => {
+    setChatHistory([])
+    setCurrentStream("")
+  }, [learningContext])
 
   const handleSend = async (forcedInput?: string) => {
     const userMessage = forcedInput || input
@@ -60,6 +67,11 @@ export default function AIAssistantSidebar({ code, language, fileName }: AIAssis
     4. CODE SNIPPETS: Only provide small syntax examples. Avoid logic-heavy snippets unless struggleScore > 85.
     5. IDENTIFY CONCEPTS: Explicitly name the coding concepts involved (e.g., "Closure", "Box Model", "Flexbox").
     6. REVERSAL: Ask the user "What do you think happens if we change X?" or "Why did you choose this approach?"
+    7. BUILD WITH TEACHING: If the user asks you to implement or change code, briefly explain the idea, then return a complete replacement for the current file inside exactly one fenced block labelled apply. The editor will apply that block. If they ask a concept question, teach with a small example and do not change the file.
+    8. Stay within the selected task or project unless the user asks to change direction. Never claim a file was changed unless you used the apply block.
+
+    Selected learning context:
+    ${learningContext || "No selected task or project. Answer the user's own coding topic or question with beginner-friendly teaching."}
 
     CROSS-AGENT NEURAL CONTEXT:
     Other agents in the Grooming Lab have observed the following:
@@ -82,6 +94,12 @@ export default function AIAssistantSidebar({ code, language, fileName }: AIAssis
         fullResponse += chunk
         setCurrentStream(fullResponse)
       })
+
+      const applyBlock = fullResponse.match(/```apply\s*\r?\n([\s\S]*?)```/i)
+      if (applyBlock && onApplyCode) {
+        onApplyCode(applyBlock[1].replace(/\s+$/, "\n"))
+        fullResponse = fullResponse.replace(applyBlock[0], "✅ I applied this version to the open file. The notes above explain the changes.")
+      }
 
       setChatHistory(prev => [...prev, { role: 'assistant', content: fullResponse }])
       addAgentInsight("Mentor", `Diagnostic query handled at ${struggleScore}% struggle.`);
@@ -371,7 +389,7 @@ export default function AIAssistantSidebar({ code, language, fileName }: AIAssis
                 handleSend()
               }
             }}
-            placeholder="Talk to your growth coach..."
+            placeholder="Ask a coding question or describe a feature to build..."
             className="w-full bg-[#050508] border border-white/10 rounded-2xl pl-6 pr-14 py-5 text-[12px] text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/40 focus:ring-1 focus:ring-cyan-500/20 transition-all resize-none h-24 scrollbar-hide shadow-2xl"
           />
           <button

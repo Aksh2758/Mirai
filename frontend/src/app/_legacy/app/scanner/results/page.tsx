@@ -437,7 +437,7 @@ export default function ResultsPage() {
       // Clean up sessionStorage now that we've used the result
       sessionStorage.removeItem('analyzerResult')
 
-      router.push(`/studio/${project_id}`)
+      router.push(`/studio?projectId=${encodeURIComponent(project_id)}`)
     } catch (e: any) {
       setError(`Could not start project: ${e.message}`)
       setSelecting(false)

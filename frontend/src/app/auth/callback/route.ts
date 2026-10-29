@@ -5,7 +5,10 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/scanner'
+  const requestedNext = searchParams.get('next') ?? '/scanner'
+  const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//')
+    ? requestedNext
+    : '/scanner'
 
   if (code) {
     const cookieStore = await cookies()
@@ -66,7 +69,7 @@ export async function GET(request: Request) {
           .eq('id', user.id)
           .single()
 
-        if (profile?.scanner_completed) {
+        if (profile?.scanner_completed && !searchParams.has('next')) {
           return NextResponse.redirect(`${origin}/dashboard`)
         }
       }

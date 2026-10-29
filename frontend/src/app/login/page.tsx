@@ -1,10 +1,11 @@
 'use client'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSignUp, setIsSignUp] = useState(false)
@@ -15,6 +16,12 @@ export default function LoginPage() {
   async function handlePostLogin() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+
+    const requestedNext = searchParams.get('next')
+    if (requestedNext?.startsWith('/') && !requestedNext.startsWith('//')) {
+      router.replace(requestedNext)
+      return
+    }
 
     const { data: profile } = await supabase
       .from('user_profiles')
@@ -40,7 +47,7 @@ export default function LoginPage() {
       ? await supabase.auth.signUp({ 
           email, 
           password, 
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback` } 
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(searchParams.get('next') || '/dashboard')}` }
         })
       : await supabase.auth.signInWithPassword({ email, password })
 
@@ -62,7 +69,7 @@ export default function LoginPage() {
       const { error: authError } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(searchParams.get('next') || '/dashboard')}`,
           scopes: 'read:user repo',
         },
       })

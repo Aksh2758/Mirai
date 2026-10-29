@@ -52,4 +52,10 @@ Student's answers:
 {qa_summary}"""
 
     result = await call_groq_json(prompt)
+    # Preserve the user's explicit destination so the dashboard can build a
+    # roadmap toward it instead of guessing from the detected role alone.
+    result["learning_goal"] = next(
+        (answer.get("answer", "").strip() for answer in answers if answer.get("question_id") == 5),
+        "",
+    )
     return result

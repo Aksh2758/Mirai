@@ -1,4 +1,4 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { supabase } from '@/lib/supabaseClient'
 import type { 
   GithubData, 
   ExtractedPdfData, 
@@ -24,36 +24,70 @@ import type {
 } from './types'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const pendingGetRequests = new Map<string, Promise<unknown>>()
+const DASHBOARD_CACHE_MAX_AGE_MS = 5 * 60 * 1000
 
 // ─── Generic fetch wrapper with Auth ──────────────────────────────────────────
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-  const { data: { session } } = await supabase.auth.getSession()
-  
-  const headers = new Headers(init?.headers)
-  if (session?.access_token) {
-    headers.set('Authorization', `Bearer ${session.access_token}`)
+  const method = (init?.method || 'GET').toUpperCase()
+  const key = `${method}:${path}`
+  if (method === 'GET') {
+    const existing = pendingGetRequests.get(key)
+    if (existing) return existing as Promise<T>
   }
 
-  if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
-    headers.set('Content-Type', 'application/json')
+  const requestPromise = (async () => {
+    const headers = new Headers(init?.headers)
+    if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
+      headers.set('Content-Type', 'application/json')
+    }
+
+    const send = async (token?: string) => {
+      const requestHeaders = new Headers(headers)
+      if (token) requestHeaders.set('Authorization', `Bearer ${token}`)
+      return fetch(`${BASE_URL}${path}`, { ...init, headers: requestHeaders })
+    }
+
+    let { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) {
+      const refreshed = await supabase.auth.refreshSession()
+      if (!refreshed.error) session = refreshed.data.session
+    }
+
+    let res = await send(session?.access_token)
+    // A request can race token auto-refresh or hit an API that validates expiry
+    // strictly. Refresh once and replay with the new access token.
+    if (res.status === 401 && session) {
+      const refreshed = await supabase.auth.refreshSession()
+      if (!refreshed.error && refreshed.data.session?.access_token) {
+        session = refreshed.data.session
+        res = await send(session.access_token)
+      }
+    }
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      if (res.status === 401) {
+        throw new Error('Your session expired. Please sign in again, then retry.')
+      }
+      throw new Error(body?.detail || res.statusText || 'API Request Failed')
+    }
+
+    const data = await res.json() as T
+    if (path === '/dashboard/summary' && session?.user?.id && typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem(`mirai-dashboard-summary:${session.user.id}`, JSON.stringify({ savedAt: Date.now(), data }))
+      } catch { /* storage can be unavailable in private browsing */ }
+    }
+    return data
+  })()
+
+  if (method === 'GET') {
+    pendingGetRequests.set(key, requestPromise)
+    requestPromise.finally(() => pendingGetRequests.delete(key)).catch(() => undefined)
   }
-
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...init,
-    headers,
-  })
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new Error(body?.detail || res.statusText || 'API Request Failed')
-  }
-
-  return res.json() as Promise<T>
+  return requestPromise
 }
 
 // ─── Scanner API ────────────────────────────────────────────────────────────
@@ -229,20 +263,20 @@ export async function runPSIAnalysis(projectId: string): Promise<PsiResult> {
  * psiScore is optional — pass it if PSI was run so the LinkedIn post can mention it.
  */
 export async function deployProject(projectId: string, psiScore?: number): Promise<Response> {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
   const { data: { session } } = await supabase.auth.getSession()
-
-  const res = await fetch(`${BASE_URL}/studio/deploy`, {
+  const send = (token?: string) => fetch(`${BASE_URL}/studio/deploy`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session?.access_token ?? ''}`,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ project_id: projectId, psi_score: psiScore ?? null }),
   })
+  let res = await send(session?.access_token)
+  if (res.status === 401 && session) {
+    const refreshed = await supabase.auth.refreshSession()
+    if (refreshed.data.session?.access_token) res = await send(refreshed.data.session.access_token)
+  }
   
   if (!res.ok) {
     const body = await res.json().catch(() => null)
@@ -275,6 +309,19 @@ export const updatePace = async () => ({ status: 'ok' })
 
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
   return request<DashboardSummary>('/dashboard/summary')
+}
+
+export function getCachedDashboardSummary(userId: string): DashboardSummary | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(`mirai-dashboard-summary:${userId}`)
+    if (!raw) return null
+    const cached = JSON.parse(raw) as { savedAt: number; data: DashboardSummary }
+    if (Date.now() - cached.savedAt > DASHBOARD_CACHE_MAX_AGE_MS) return null
+    return cached.data
+  } catch {
+    return null
+  }
 }
 
 // ─── TECH RADAR ───────────────────────────────────────────────────────────────

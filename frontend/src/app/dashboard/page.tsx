@@ -4,8 +4,10 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import { fetchDashboardSummary } from '@/lib/api'
+import { fetchDashboardSummary, getCachedDashboardSummary } from '@/lib/api'
 import type { DashboardSummary } from '@/lib/types'
+import type { ProjectSuggestion } from '@/lib/types'
+import { initStudio } from '@/lib/api'
 import Sidebar from '@/components/dashboard/Sidebar'
 import Topbar from '@/components/dashboard/Topbar'
 
@@ -26,6 +28,95 @@ const c = {
 
 type Job     = DashboardSummary['top_internships'][number]
 
+interface RoadmapLearningStep { title: string; category: string; detail: string; skills: string[] }
+
+function makeLearningRoadmap(role: string, level: string, scores: Array<{ label: string; score: number; category?: string }>, goal: string): RoadmapLearningStep[] {
+  const normalizedRole = role.toLowerCase()
+  const dataRole = normalizedRole.includes('data') || normalizedRole.includes('machine')
+  const frontendRole = normalizedRole.includes('frontend') || normalizedRole.includes('front-end')
+  const backendRole = normalizedRole.includes('backend') || normalizedRole.includes('back-end')
+  const primaryLanguage = scores.find(item => item.category === 'Languages')?.label || (dataRole || backendRole ? 'Python' : 'JavaScript')
+  const gaps = scores.filter(item => item.score < 65).sort((a, b) => a.score - b.score).slice(0, 3).map(item => item.label)
+  const roleModules: RoadmapLearningStep[] = dataRole
+    ? [
+        { title: 'SQL and relational data', category: 'Data foundations', detail: 'Write SELECT queries, joins, aggregations, and reason about tables and keys.', skills: ['SQL', 'Data modeling'] },
+        { title: 'Data analysis with Python', category: 'Role skills', detail: 'Load, clean, transform, and validate real datasets with pandas and NumPy.', skills: ['Python', 'pandas', 'NumPy'] },
+        { title: 'Statistics and model evaluation', category: 'Role skills', detail: 'Use train/test splits, baselines, precision, recall, and error analysis before trusting a model.', skills: ['Statistics', 'Model evaluation'] },
+        { title: 'Communicate data with visualizations', category: 'Role skills', detail: 'Choose charts that answer a question, label them clearly, and explain what the data cannot prove.', skills: ['Data visualization'] },
+      ]
+    : frontendRole
+      ? [
+          { title: 'HTML, CSS, responsive layout, and accessibility', category: 'Frontend skills', detail: 'Build semantic pages that work with a keyboard, screen reader, and small screens.', skills: ['HTML', 'CSS', 'Accessibility'] },
+          { title: 'JavaScript in the browser', category: 'Frontend skills', detail: 'Work with the DOM, events, forms, async requests, and browser errors.', skills: ['JavaScript', 'DOM', 'Async'] },
+          { title: 'React and TypeScript', category: 'Frontend skills', detail: 'Compose components, model state, type props, and keep UI behavior predictable.', skills: ['React', 'TypeScript'] },
+          { title: 'Routing, forms, APIs, and loading states', category: 'Frontend skills', detail: 'Connect screens to APIs and handle validation, waiting, empty, error, and success states.', skills: ['Routing', 'API integration'] },
+        ]
+      : backendRole
+        ? [
+            { title: 'HTTP and API design', category: 'Backend skills', detail: 'Design resource routes, status codes, validation, pagination, and consistent errors.', skills: ['HTTP', 'REST APIs'] },
+            { title: 'Databases and data modeling', category: 'Backend skills', detail: 'Model relationships, write joins, use constraints, and understand indexes and transactions.', skills: ['SQL', 'Data modeling'] },
+            { title: 'Authentication and application security', category: 'Backend skills', detail: 'Protect routes, validate input, handle secrets, and understand authorization boundaries.', skills: ['Authentication', 'Security'] },
+            { title: 'Background work and performance', category: 'Backend skills', detail: 'Use caching, queues, timeouts, and profiling to keep services reliable under load.', skills: ['Caching', 'Performance'] },
+          ]
+        : [
+            { title: 'Web fundamentals and APIs', category: 'Role skills', detail: 'Understand how browsers, HTTP requests, and services work together.', skills: ['Web', 'HTTP', 'APIs'] },
+            { title: 'Build a complete feature', category: 'Role skills', detail: 'Connect an interface, application logic, and persistent data into one user flow.', skills: ['Frontend', 'Backend', 'Database'] },
+            { title: 'Data modeling and SQL', category: 'Role skills', detail: 'Choose data shapes, write queries, and protect consistency with constraints.', skills: ['SQL', 'Data modeling'] },
+            { title: 'Authentication and application security', category: 'Role skills', detail: 'Add sign-in, access rules, input validation, and safe handling of secrets.', skills: ['Authentication', 'Security'] },
+          ]
+
+  const base: RoadmapLearningStep[] = [
+    { title: `Strengthen ${primaryLanguage}`, category: 'Language', detail: level === 'Beginner' ? `Practice ${primaryLanguage} values, conditions, loops, functions, collections, and readable naming.` : `Deepen ${primaryLanguage} with modules, types, error handling, async work, and idiomatic patterns.`, skills: [primaryLanguage] },
+    { title: 'Git, debugging, and reading error messages', category: 'Engineering habits', detail: 'Make small commits, reproduce a bug, inspect the stack trace, and verify the fix.', skills: ['Git', 'Debugging'] },
+    { title: 'DSA: complexity, arrays, and strings', category: 'Data structures & algorithms', detail: 'Estimate time and space, then solve traversal, counting, and two-pointer problems.', skills: ['Big-O', 'Arrays', 'Strings'] },
+    { title: 'DSA: hash maps, sets, stacks, and queues', category: 'Data structures & algorithms', detail: 'Choose the right structure for lookups, matching, ordering, and breadth-first work.', skills: ['Hash maps', 'Sets', 'Stacks', 'Queues'] },
+    ...roleModules,
+    ...(gaps.length ? [{ title: `Close your analyzed gaps: ${gaps.join(', ')}`, category: 'Profile-specific focus', detail: `Your analysis marked these skills as the biggest growth areas. Learn each concept in a small exercise, then use it in a project aimed at: ${goal}.`, skills: gaps }] : []),
+    { title: 'Testing, code review, and clean structure', category: 'Engineering methods', detail: 'Write unit and integration checks, handle edge cases, and explain why code is organized the way it is.', skills: ['Testing', 'Code quality'] },
+    { title: level === 'Advanced' ? 'Trees, graphs, dynamic programming, and trade-offs' : 'Sorting, binary search, recursion, and trees', category: 'Data structures & algorithms', detail: 'Move from core patterns to the level-appropriate problems used in interviews and real systems.', skills: ['Algorithms', 'Trees', 'Problem solving'] },
+    { title: 'Ship and explain a capstone', category: 'Career goal', detail: `Build, test, document, and present a project that demonstrates your progress toward “${goal}”.`, skills: ['Deployment', 'Documentation', 'Communication'] },
+  ]
+  return base
+}
+
+function createRoadmapProjects(role: string, level: string, targetLevel: string, goal: string, scores: Array<{ label: string; score: number }>): ProjectSuggestion[] {
+  const normalizedRole = role.toLowerCase()
+  const gap = scores.filter(item => item.score < 65).sort((a, b) => a.score - b.score).slice(0, 2).map(item => item.label)
+  const dataRole = normalizedRole.includes('data') || normalizedRole.includes('machine')
+  const frontendRole = normalizedRole.includes('frontend') || normalizedRole.includes('front-end')
+  const backendRole = normalizedRole.includes('backend') || normalizedRole.includes('back-end')
+  const dsaGoal = /\b(dsa|algorithms?|data structures?|coding interview|problem solving)\b/i.test(goal)
+  const family = dsaGoal
+    ? { type: 'algorithms', stack: ['Python', 'JavaScript', 'Testing', 'Complexity analysis'], titles: ['Pattern Practice CLI', 'Algorithm Visualizer', 'Interview Problem Workbench'] }
+    : dataRole
+    ? { type: 'data', stack: ['Python', 'pandas', 'SQL', 'Streamlit'], titles: ['Dataset Explorer', 'Insight Dashboard', 'Model Evaluation Workbench'] }
+    : frontendRole
+      ? { type: 'frontend', stack: ['React', 'TypeScript', 'CSS', 'Testing'], titles: ['Accessible Responsive App', 'Role-focused Interactive Portal', 'Production-ready Product Dashboard'] }
+      : backendRole
+        ? { type: 'backend', stack: ['Python', 'FastAPI', 'SQL', 'pytest'], titles: ['Validated REST API', 'Authenticated Data Service', 'Reliable Scalable API'] }
+        : { type: 'full-stack', stack: ['React', 'TypeScript', 'FastAPI', 'SQL'], titles: ['Working Feature Slice', 'Goal-focused Full-stack App', 'Production-ready Learning Platform'] }
+  const orderedGaps = gap.length ? gap : ['Testing', 'Project structure']
+  const levelOrder: ProjectSuggestion['difficulty'][] = ['Beginner', 'Intermediate', 'Advanced']
+  const startingIndex = levelOrder.indexOf(level as ProjectSuggestion['difficulty'])
+  const targetIndex = Math.max(startingIndex, levelOrder.indexOf(targetLevel as ProjectSuggestion['difficulty']))
+  const levels = [0, 1, 2].map(index => levelOrder[Math.round(startingIndex + ((targetIndex - startingIndex) * index) / 2)])
+  return family.titles.map((title, index) => {
+    const projectSkills = [...new Set([...orderedGaps.slice(0, index + 1), ...family.stack.slice(0, 2 + index)])]
+    const stage = ['Foundation build', 'Skill bridge', 'Goal capstone'][index]
+    const brief = `${stage} for your ${role} path: make a ${family.type} product that advances “${goal}”. ${index === 0 ? `Practice ${projectSkills.slice(0, 2).join(' and ')} with a small working feature.` : `Apply ${projectSkills.slice(0, 3).join(', ')} with tests and a clear user workflow.`}`
+    return {
+      title,
+      brief,
+      full_explanation: `${title} is the ${stage.toLowerCase()} in your roadmap from ${level} toward ${targetLevel}. It covers ${projectSkills.join(', ')} through milestones that start with a small feature and add complexity gradually. Each milestone is designed to teach the concepts before expanding the code. You will test edge cases, document your decisions, and finish with a working ${family.type} app. It directly supports your goal: ${goal}.`,
+      tech_stack: projectSkills,
+      difficulty: levels[index],
+      estimated_hours: [6, 12, 24][index],
+      outcome: `Show a tested ${family.type} project that demonstrates ${projectSkills.slice(0, 3).join(', ')} and moves you toward ${goal}.`,
+      new_skills_introduced: orderedGaps.slice(0, index + 1),
+    }
+  })
+}
+
 /* ─── helpers ─────────────────────────────────────────────── */
 function getInitials(name: string, email: string) {
   const src   = name || email || 'AK'
@@ -40,23 +131,50 @@ export default function DashboardPage() {
   const [data, setData]       = useState<DashboardSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
+  const [startingProject, setStartingProject] = useState<string | null>(null)
+  const [roadmapError, setRoadmapError] = useState<string | null>(null)
+  const [roadmapOpen, setRoadmapOpen] = useState(false)
+  const [targetGoal, setTargetGoal] = useState('')
+  const [targetLevel, setTargetLevel] = useState<'Beginner' | 'Intermediate' | 'Advanced'>('Intermediate')
+  const [roadmapDone, setRoadmapDone] = useState<Record<string, boolean>>({})
+  const [goalSaved, setGoalSaved] = useState(false)
 
   useEffect(() => {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
+      const cached = getCachedDashboardSummary(session.user.id)
+      if (cached) {
+        setData(cached)
+        setLoading(false)
+      }
       try {
         const summary = await fetchDashboardSummary()
         if (!summary.scanner_completed) { router.push('/scanner'); return }
         setData(summary)
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : 'Unknown error')
+        if (!cached) setError(e instanceof Error ? e.message : 'Unknown error')
       } finally {
         setLoading(false)
       }
     }
     load()
   }, [router])
+
+  useEffect(() => {
+    if (!data) return
+    const key = `nirmaan-roadmap:${data.user.email || 'user'}`
+    const nextLevelValue: 'Beginner' | 'Intermediate' | 'Advanced' = data.user.level === 'Beginner' ? 'Intermediate' : data.user.level === 'Intermediate' ? 'Advanced' : 'Advanced'
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(key) || 'null') as { goal?: string; level?: 'Beginner' | 'Intermediate' | 'Advanced'; done?: Record<string, boolean> } | null
+      setTargetGoal(saved?.goal || `Become job-ready as a ${data.user.role || 'software developer'}`)
+      setTargetLevel(saved?.level || nextLevelValue)
+      setRoadmapDone(saved?.done || {})
+    } catch {
+      setTargetGoal(`Become job-ready as a ${data.user.role || 'software developer'}`)
+      setTargetLevel(nextLevelValue)
+    }
+  }, [data?.user.email, data?.user.role, data?.user.level])
 
   if (loading) return <Centered text="Loading your dashboard…" />
   if (error)   return <Centered text={`Could not load: ${error}`} action={<button onClick={() => window.location.reload()} style={retryBtn}>Retry</button>} />
@@ -70,7 +188,7 @@ export default function DashboardPage() {
   const stack       = project?.tech_stack || []
   const todo        = project?.current_step_todo?.slice(0, 3) || []
   const focus       = todo.length ? todo : ['Review your roadmap step', 'Continue building in Studio', 'Run a final PSI check']
-  const goStudio    = () => router.push(project ? `/studio/${project.id}` : '/scanner')
+  const goStudio    = () => router.push(project ? `/studio?projectId=${encodeURIComponent(project.id)}` : '/scanner')
 
   // skill scores for career readiness sidebar
   const skillEntries = Object.values(data.user.skill_scores || {})
@@ -78,6 +196,43 @@ export default function DashboardPage() {
   const avgScore     = skillEntries.length
     ? Math.round(skillEntries.reduce((a, b) => a + b.score, 0) / skillEntries.length)
     : pct
+
+  const roadmapKnown = skillEntries.filter(skill => skill.score >= 65).sort((a, b) => b.score - a.score).slice(0, 5)
+  const roadmapGaps = skillEntries.filter(skill => skill.score < 65).sort((a, b) => a.score - b.score).slice(0, 4)
+  const goal = targetGoal || `Become job-ready as a ${data.user.role || 'software developer'}`
+  const roadmapLearningSteps = makeLearningRoadmap(data.user.role || 'Software Developer', data.user.level || 'Beginner', skillEntries, goal)
+  const roadmapProjects = createRoadmapProjects(data.user.role || 'Software Developer', data.user.level || 'Beginner', targetLevel, goal, skillEntries)
+  const roadmapPhases = [
+    { title: '01 · Foundation', subtitle: 'Language, tools, and problem-solving basics', steps: roadmapLearningSteps.slice(0, 4) },
+    { title: '02 · Role skills', subtitle: `Focused skills for ${data.user.role || 'your target role'}`, steps: roadmapLearningSteps.slice(4, 8) },
+    { title: '03 · Engineering practice', subtitle: 'Testing, reliability, and the final stretch to your goal', steps: roadmapLearningSteps.slice(8) },
+  ].filter(phase => phase.steps.length > 0)
+  const completedRoadmapCount = roadmapLearningSteps.filter(step => roadmapDone[step.title]).length
+  const roadmapStorageKey = `nirmaan-roadmap:${data.user.email || 'user'}`
+
+  function saveRoadmapGoal() {
+    window.localStorage.setItem(roadmapStorageKey, JSON.stringify({ goal: targetGoal.trim() || goal, level: targetLevel, done: roadmapDone }))
+    setGoalSaved(true)
+    window.setTimeout(() => setGoalSaved(false), 1800)
+  }
+
+  function toggleRoadmapStep(title: string) {
+    const next = { ...roadmapDone, [title]: !roadmapDone[title] }
+    setRoadmapDone(next)
+    window.localStorage.setItem(roadmapStorageKey, JSON.stringify({ goal, level: targetLevel, done: next }))
+  }
+
+  async function startRoadmapProject(project: ProjectSuggestion) {
+    setStartingProject(project.title)
+    setRoadmapError(null)
+    try {
+      const { project_id } = await initStudio(project, data!.user.level || 'Beginner')
+      router.push(`/studio?projectId=${encodeURIComponent(project_id)}`)
+    } catch (e) {
+      setRoadmapError(e instanceof Error ? e.message : 'Could not start this project')
+      setStartingProject(null)
+    }
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: c.bg, color: c.ink, fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif" }}>
@@ -91,57 +246,58 @@ export default function DashboardPage() {
           {/* ── LEFT ── */}
           <div style={{ display: 'grid', gap: 18, minWidth: 0 }}>
 
-            {/* ACTIVE SPRINT HERO */}
-            <section style={heroWrap}>
-              <div style={heroBadgeRow}>
-                <span style={sprintDot} />
-                <span style={sprintLabel}>
-                  ACTIVE SPRINT{project ? ` • STEP ${project.steps_done + 1} OF ${project.steps_total}` : ''}
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', gap: 28, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, minWidth: 240 }}>
-                  <h2 style={heroTitle}>{project ? project.title : 'Start your first project'}</h2>
-                  {project && (
-                    <p style={heroSub}>
-                      Step {project.steps_done + 1} of {project.steps_total}:{' '}
-                      <span style={{ color: 'rgba(255,255,255,0.7)' }}>{project.current_step_title}</span>
-                      {stack.length > 0 && (
-                        <span> with <code style={codeChip}>{stack.slice(0, 2).join(' & ')}</code></span>
-                      )}
-                    </p>
-                  )}
-
-                  <div style={{ marginTop: 20, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    <button onClick={goStudio} style={heroPrimBtn}>
-                      {project ? 'Continue in Studio' : 'Start scanner'} →
-                    </button>
-                    {project && (
-                      <button onClick={() => router.push(`/studio/${project.id}`)} style={heroSecBtn}>
-                        📄 View Project Spec
-                      </button>
-                    )}
-                  </div>
+            {/* PROFILE & STRENGTHS — click the card to open the full written roadmap */}
+            <section style={{ ...heroWrap, padding: 26 }} aria-label="Profile and strengths roadmap">
+              <button onClick={() => setRoadmapOpen(open => !open)} aria-expanded={roadmapOpen} aria-controls="profile-learning-roadmap" style={{ display: 'block', width: '100%', background: 'transparent', border: 0, color: 'inherit', padding: 0, textAlign: 'left', cursor: 'pointer' }}>
+                <div style={{ ...heroBadgeRow, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={sprintDot} /><span style={sprintLabel}>PROFILE & STRENGTHS</span></span>
+                  <span style={{ color: 'rgba(255,255,255,.62)', fontSize: 10 }}>{data.user.level || 'Beginner'} now → {targetLevel} goal</span>
                 </div>
-
-                {/* Progress mini card */}
-                <div style={heroProgressCard}>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: 600, letterSpacing: 0.4, marginBottom: 10 }}>
-                    Sprint Completion
-                  </div>
-                  <ProgressBar value={pct} track="rgba(255,255,255,0.15)" fill={c.accent} />
-                  <div style={{ marginTop: 8, fontSize: 13, color: 'rgba(255,255,255,0.8)', fontWeight: 700 }}>
-                    {pct}% Finished
-                  </div>
-                  {project && (
-                    <div style={{ marginTop: 4, fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>
-                      {project.steps_done}/{project.steps_total} steps done
-                    </div>
-                  )}
+                <h2 style={{ ...heroTitle, marginTop: 13, marginBottom: 7 }}>Your {data.user.role || 'developer'} profile</h2>
+                <p style={{ ...heroSub, marginTop: 0, maxWidth: 760 }}>See what your analysis says you already know, where to grow next, and the written steps to reach “{goal}”. Click this card to {roadmapOpen ? 'close' : 'open'} your complete roadmap.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0,1fr))', gap: 10, marginTop: 18 }}>
+                  {[
+                    { title: 'Current level', body: data.user.level || 'Beginner' },
+                    { title: 'Profile strengths', body: roadmapKnown.length ? roadmapKnown.slice(0, 2).map(s => `${s.label} ${s.score}%`).join(' · ') : 'Ready to build your first verified skills' },
+                    { title: 'Growth areas', body: roadmapGaps.length ? roadmapGaps.slice(0, 2).map(s => `${s.label} ${s.score}%`).join(' · ') : `Next: ${roadmapLearningSteps[0]?.skills[0] || 'core fundamentals'}` },
+                  ].map((item, i) => <div key={item.title} style={{ border: '1px solid rgba(255,255,255,.12)', background: 'rgba(255,255,255,.06)', borderRadius: 12, padding: 13 }}><div style={{ color: c.accent, fontSize: 10, fontWeight: 800 }}>0{i + 1} · PROFILE</div><div style={{ color: '#fff', fontSize: 13, fontWeight: 750, marginTop: 6 }}>{item.title}</div><div style={{ color: 'rgba(255,255,255,.68)', fontSize: 11, lineHeight: 1.5, marginTop: 4 }}>{item.body}</div></div>)}
                 </div>
-              </div>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 14, color: c.accent, fontSize: 12, fontWeight: 800 }}>{roadmapOpen ? 'Hide the complete roadmap' : 'Click to read your complete roadmap'} <span aria-hidden="true">{roadmapOpen ? '↑' : '↓'}</span></span>
+              </button>
+              {roadmapOpen && <div style={{ marginTop: 18, padding: 16, border: '1px solid rgba(255,255,255,.14)', borderRadius: 14, background: 'rgba(0,0,0,.18)' }}>
+                <div id="profile-learning-roadmap" style={{ color: '#fff', fontSize: 15, fontWeight: 850, marginBottom: 5 }}>Your roadmap, written step by step</div>
+                <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,.62)', fontSize: 11, lineHeight: 1.55 }}>Start with the first unchecked step. Learn the listed concepts, practise them with small exercises, then use the project recommendations below to apply them toward your goal.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,1fr) 180px auto', gap: 10, alignItems: 'end', marginBottom: 15 }}>
+                  <label style={{ color: 'rgba(255,255,255,.72)', fontSize: 10, fontWeight: 700 }}>YOUR GOAL
+                    <input value={targetGoal} onChange={event => setTargetGoal(event.target.value)} placeholder="e.g. Get a frontend internship" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, border: '1px solid rgba(255,255,255,.2)', borderRadius: 8, padding: '9px 10px', background: 'rgba(255,255,255,.08)', color: '#fff', fontSize: 12 }} />
+                  </label>
+                  <label style={{ color: 'rgba(255,255,255,.72)', fontSize: 10, fontWeight: 700 }}>TARGET LEVEL
+                    <select value={targetLevel} onChange={event => setTargetLevel(event.target.value as 'Beginner' | 'Intermediate' | 'Advanced')} style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, border: '1px solid rgba(255,255,255,.2)', borderRadius: 8, padding: '9px 10px', background: '#123326', color: '#fff', fontSize: 12 }}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select>
+                  </label>
+                  <button onClick={saveRoadmapGoal} style={{ ...heroPrimBtn, padding: '10px 14px', fontSize: 11 }}>{goalSaved ? 'Saved ✓' : 'Save goal'}</button>
+                </div>
+                {roadmapPhases.map(phase => <div key={phase.title} style={{ marginTop: 15 }}>
+                  <div style={{ marginBottom: 8 }}><div style={{ color: c.accent, fontSize: 11, fontWeight: 900 }}>{phase.title}</div><div style={{ color: 'rgba(255,255,255,.5)', fontSize: 10, marginTop: 3 }}>{phase.subtitle}</div></div>
+                  <div style={{ display: 'grid', gap: 7 }}>{phase.steps.map((step, index) => <label key={step.title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', border: '1px solid rgba(255,255,255,.09)', borderRadius: 10, padding: '10px 11px', background: 'rgba(255,255,255,.035)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!roadmapDone[step.title]} onChange={() => toggleRoadmapStep(step.title)} style={{ marginTop: 2, accentColor: c.accent }} />
+                    <span style={{ flex: 1 }}><span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><strong style={{ color: roadmapDone[step.title] ? 'rgba(255,255,255,.5)' : '#fff', fontSize: 12 }}>{step.title}</strong><span style={{ color: c.accent, fontSize: 9, fontWeight: 700 }}>{step.category}</span></span><span style={{ display: 'block', color: 'rgba(255,255,255,.62)', fontSize: 10, lineHeight: 1.5, marginTop: 4 }}>{step.detail}</span><span style={{ display: 'block', color: 'rgba(255,255,255,.42)', fontSize: 9, marginTop: 5 }}>Learn: {step.skills.join(' · ')}</span></span>
+                  </label>)}</div>
+                </div>)}
+                <div style={{ marginTop: 15, color: 'rgba(255,255,255,.6)', fontSize: 10 }}>Analyzed strengths: {roadmapKnown.length ? roadmapKnown.map(s => s.label).join(' · ') : 'No verified strengths yet'}<br />Priority gaps: {roadmapGaps.length ? roadmapGaps.map(s => s.label).join(' · ') : 'No low-scoring gaps found'}</div>
+              </div>}
             </section>
+
+            {/* PROJECTS — separate section directly below the profile roadmap card */}
+            <Card style={{ padding: 22 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
+                <div><div style={{ color: c.green, fontSize: 10, fontWeight: 900, letterSpacing: 1.2 }}>PROJECTS FOR YOUR GOAL</div><h2 style={{ margin: '5px 0', color: c.ink, fontSize: 19, fontWeight: 850 }}>Build these in order</h2><p style={{ margin: 0, color: c.muted, fontSize: 11, lineHeight: 1.5 }}>Each project covers skills from your roadmap. Choose one to open it in Studio.</p></div>
+                {project && <button onClick={() => router.push(`/studio?projectId=${encodeURIComponent(project.id)}`)} style={{ ...heroPrimBtn, padding: '10px 14px', fontSize: 11 }}>Continue {project.title} →</button>}
+              </div>
+              {roadmapError && <p style={{ color: '#b91c1c', fontSize: 12 }}>{roadmapError}</p>}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 12 }}>
+                {roadmapProjects.map((suggestion, i) => <button key={suggestion.title} disabled={!!startingProject} onClick={() => startRoadmapProject(suggestion)} style={{ textAlign: 'left', cursor: 'pointer', border: `1px solid ${i === 0 ? '#9bd8b1' : c.line}`, background: i === 0 ? '#F0FAF3' : '#FAFCFB', borderRadius: 12, padding: 14, color: c.ink, opacity: startingProject && startingProject !== suggestion.title ? .55 : 1 }}><div style={{ color: c.green, textTransform: 'uppercase', fontSize: 9, fontWeight: 900 }}>{['01 · FOUNDATION', '02 · SKILL BRIDGE', '03 · CAPSTONE'][i]} · {suggestion.difficulty}</div><div style={{ fontSize: 13, fontWeight: 850, marginTop: 7 }}>{startingProject === suggestion.title ? 'Preparing Studio…' : suggestion.title}</div><div style={{ fontSize: 11, color: c.muted, lineHeight: 1.5, marginTop: 6 }}>{suggestion.brief}</div><div style={{ fontSize: 10, color: '#35634a', marginTop: 8 }}>{suggestion.tech_stack.join(' · ')}</div><div style={{ fontSize: 10, fontWeight: 800, color: c.green, marginTop: 12 }}>Open in Studio →</div></button>)}
+              </div>
+            </Card>
 
             {/* TODAY'S FOCUS + ACTIVE APPLICATIONS */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

@@ -54,19 +54,29 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // getUser() makes an Auth network request on every page navigation. Verify
+  // the JWT locally with getClaims(); Supabase refreshes it when it is near
+  // expiry and the cached signing key keeps routine route loads quick.
+  const { data, error } = await supabase.auth.getClaims()
+  const isAuthenticated = !error && Boolean(data?.claims?.sub)
 
   // Protected routes — user must be logged in
   const PROTECTED = ['/scanner', '/studio', '/dashboard', '/internships']
   const path = request.nextUrl.pathname
   const isProtected = PROTECTED.some(p => path.startsWith(p))
 
-  if (!user && isProtected) {
-    return NextResponse.redirect(new URL('/login', request.url))
+  if (!isAuthenticated && isProtected) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('next', `${request.nextUrl.pathname}${request.nextUrl.search}`)
+    return NextResponse.redirect(loginUrl)
   }
 
-  if (user && path === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+  if (isAuthenticated && path === '/login') {
+    const requestedNext = request.nextUrl.searchParams.get('next')
+    const safeNext = requestedNext?.startsWith('/') && !requestedNext.startsWith('//')
+      ? requestedNext
+      : '/dashboard'
+    return NextResponse.redirect(new URL(safeNext, request.url))
   }
 
   return response
